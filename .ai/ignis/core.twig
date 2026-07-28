@@ -1,0 +1,35 @@
+# CakePHP Ignis
+{% if assist.hasMcpEnabled() %}
+
+## Tools
+- CakePHP Ignis is an MCP server with tools designed for this application. Prefer Ignis tools over manual shell commands or raw file reads when they fit.
+- Use `database-query` for read-only SQL instead of ad hoc database access in tinker.
+- Use `database-schema` to inspect table structure before writing migrations or table classes.
+- Use `get-absolute-url` to resolve the correct scheme, domain, and port for project URLs. Always use this before sharing a URL with the user.
+- Use `current-time` for the host clock (`App.defaultTimezone`). It returns one formatted timestamp (`Y-m-d H:i:s P`). Prefer it over shell `date` / PowerShell `Get-Date`.
+{% if assist.browserLogsEnabled() or assist.browserLogsWatcherEnabled() %}
+- Use `browser-logs` to read browser console logs, errors, and exceptions. Only recent entries are useful; ignore old log lines.
+{% endif %}
+{% endif %}
+
+{% if assist.rulesEnabled() %}
+## Project Rules
+- This project may keep committed, area-grouped rules in `.ai/rules` (settled decisions, non-obvious traps, standing constraints). Before you plan or edit files, open `.ai/rules/index.md` when it exists, read every rule file whose globs cover the paths in scope, and search `.ai/rules` for relevant keywords. Do not write code until matching rules are understood.
+{% if assist.hasMcpEnabled() %}
+- Record durable rules with `record-rule` so the next agent or teammate inherits them. Pass a `glob` (for example `src/Controller/**`), a short `title`, and a concise `note`. Use `record-rule` for team-shared repo rules — not personal session memory.
+{% endif %}
+
+{% endif %}
+
+## Cake Console
+- Run Cake commands via the CLI (for example `{{ assist.cakeCommand('routes') }}`). Use `{{ assist.cakeCommand('') }}` to discover commands and `{{ assist.cakeCommand('[command] -h') }}` to inspect options.
+- Inspect routes with `{{ assist.cakeCommand('routes') }}`.
+- Read configuration from files under `config/` or use MCP `config-read` when available.
+
+## Tinker
+- Execute PHP in the application context for debugging. Do not create database records without user approval; prefer fixtures and tests.
+{% if assist.hasMcpEnabled() and assist.tinkerToolEnabled() %}
+- Use the `tinker` MCP tool to execute PHP instead of the CLI. It avoids shell escaping issues and runs inside the CakePHP application context.
+{% else %}
+- Prefer MCP `execute-tool` or existing console commands over custom one-off scripts when debugging.
+{% endif %}

@@ -1,0 +1,116 @@
+---
+name: infer-conventions
+description: "Use this skill to analyze how a CakePHP application is actually written and record its conventions as shared rules. Trigger when the user wants to detect, infer, document, or standardize project conventions or coding style, set up or grow `.ai/rules`, resolve mixed or conflicting patterns (e.g. \"are we using Table validation or Form helpers?\"), or onboard agents and teammates to \"how we do things here\". Covers: a systematic sweep of CakePHP convention dimensions (validation, tables/entities, architecture, testing, views, database, console), open-ended house-pattern discovery, conflict reporting, and recording rules scoped to the right paths via the Ignis `record-rule` MCP tool. Do not use for one-off code review, enforcing formatting a linter already handles, or editing `.ai/rules` files by hand."
+license: MIT
+metadata:
+  author: crustum
+---
+# Infer Conventions
+
+Learn how this application writes CakePHP, then record what you learn as durable, path-scoped rules other agents will read. You are documenting reality, not improving it.
+
+## Ground Rules (read before you start)
+
+- Consistency first. The codebase's majority style is the convention. Never judge it, never propose a "better" pattern, never record what the code should do. If the app validates in controllers everywhere, that is the rule, even if Form/`Validator` in Tables would be nicer.
+- Skip what a tool produces, keep what a tool would fight. PHPCS, PHPStan, and Rector rewrite code toward one canonical form: import order, strict types, typed properties, modern PHP constructs, and many more. When the app already sits at a tool's target form, the tool owns it, so record nothing. But when the app deliberately holds a form a tool would refactor away, no tool can reproduce that choice and an agent defaults the other way. That against-the-grain hold is exactly what to record.
+- Record decisions, not defaults. A consistent pattern earns a rule only when it reflects a choice: the app took one valid option where the framework or common practice offered others, or the pattern would surprise a competent agent. Framework defaults steer nothing, so skip them: Bake-generated Table/Entity pairs, ubiquitous open `$_accessible` with `'*' => true`, named routes when the project already uses them, and anything an agent already writes unprompted. A real fork is not enough on its own. Weigh the side the app took, and record only the side an agent would not reach for by itself. The test for every candidate: without this rule, would the next agent plausibly write it differently? Only "yes" earns a rule.
+- Architecture choices are the gold. Record presence and deliberate absence. The structural pattern the app commits to is the highest-signal convention and the one no tool can decide: Service classes and how they are invoked, dedicated query helpers on Tables vs fat controllers, Form classes vs inline validation, Events and listeners vs direct calls, and domain or plugin folders. Also record a consistent non-pattern, such as "query Tables directly in controllers, no repository layer", so the next agent matches the app's altitude instead of over-engineering.
+- Never duplicate `.ai/rules`. Read `.ai/rules/index.md` and the area files before the sweep. A dimension already covered there is marked done and skipped.
+- Evidence or silence. A convention needs at least 3 consistent examples and no meaningful rival to become a candidate. Every Step 1 verdict applies this bar.
+- The recorded rule states the convention, nothing else. One or two imperative lines: this project does X, so do X here. Keep detection evidence out. No counts, ratios, current usage, file lists, or example paths, because that is proof for the confirm step, not part of the rule. One short syntax fragment at most, and point to the CakePHP 5 Book for API details.
+
+## Process
+
+Each step ends on a checkable completion criterion. Do not advance until it holds.
+
+Fan out when you can. The sweep is embarrassingly parallel. If your environment can spawn subagents (a Task, dispatch, or equivalent tool), do Step 0 yourself, then hand each checklist group (A to J) and the architecture map to its own subagent. Each subagent runs the greps, reads a few representative files, and returns structured verdicts (dimension, verdict, evidence, proposed glob / title / note). You aggregate, dedupe, then run Steps 3 to 5. It is far faster on a real app. No subagents available? Run the steps in sequence, with the same bar and the same output.
+
+### Step 0: Orient
+
+Read `composer.json` (installed packages tell you which checklist groups apply), the PHPCS / PHPStan / Rector config, `.ai/rules/index.md` if present, and most important, map the `src/` tree. List every directory under `src/` (and any `plugins/`, `modules/`, or domain root). Every folder beyond CakePHP's default skeleton (`Controller`, `Model`, `View`, `Command`, `Middleware`, `Application.php`) is a structural pattern the app committed to and a high-value rule waiting to be written: `Service`, `Services`, `Dto` or `Data`, `Policy`, `Mailer`, `Job`, `Support`, `Enum` or `Enums`, `Contract` or `Contracts`, or plugin roots. Note each one. You will confirm how it is used in Step 2.
+
+{% if assist.hasPackage('zunnu/cake-htmx') or assist.hasPackage('friendsofcake/bootstrap-ui') %}
+This app ships a frontend UI stack package, so the frontend checklist group applies. Sweep it.
+{% else %}
+This app has no HTMX/Bootstrap-UI packages installed. Treat the frontend group as likely templates-or-API: confirm from `templates/` before spending time there, and skip HTMX/Bootstrap-UI-specific dimensions.
+{% endif %}
+
+Done when: you have the applicable checklist groups, the dimensions already recorded in `.ai/rules`, and a list of every non-default `src/` directory mapped to the pattern it represents.
+
+### Step 1: Predefined sweep
+
+Open `references/checklist.md` and work every applicable dimension using its search hints. Give each exactly one verdict:
+
+- Pattern. Clears the bar, rival under ~20% of sites, and reflects a real choice (passes the decisions-not-defaults test). A recording candidate. Cite 2 to 3 example files.
+- Conflict. Both styles present in meaningful numbers. Report the split with counts and example files. Never auto-recorded, even in yolo, because a conflict has no winner and recording either side fights half the codebase. The user picks, and their pick is recorded (say in the note that this was a decision, not a detection).
+- Default. Consistent, but a framework or common-practice default the agent already writes unprompted. Skip it as a no-op, not a convention.
+- No signal. Under the bar: feature unused, or too few examples. Skip silently (one summary line at most).
+- Tooling-owned or Already-recorded. Skip per the ground rules.
+
+Done when: every applicable dimension carries exactly one of those verdicts.
+
+### Step 2: Open-ended pass
+
+First, close out the architecture map from Step 0. For every non-default `src/` directory you listed, confirm how the pattern is used and make it a candidate: Service classes constructor-injected, Form classes under `src/Form`, plugin folders as the unit of organization. Each mapped pattern is a rule, scoped to its own directory glob. Also record a consistent deliberate absence, such as "no repository layer, controllers query Tables directly", so the next agent matches the app's altitude.
+
+Then find what else makes this codebase itself: base or abstract classes most code extends, traits used everywhere, authorization scoping woven through queries, naming schemes, and custom helpers. Same evidence bar, cite files. Record every genuine structural pattern, and cap the other house findings at ~5 so the pass stays high-signal.
+
+Done when: every non-default `src/` directory from Step 0 has a verdict, and the pass has produced its cited house findings (or concluded there are none).
+
+### Step 3: Confirm
+
+Present every candidate in one batch. Per item: dimension, verdict, evidence (counts and files), and the exact proposed `glob` / `title` / `note`. Conflicts are presented as questions, not candidates.
+
+Default mode is confirm: record only what the user approves. Switch to yolo only when the invocation said so ("yolo", "don't ask", "just record them"), then record all pattern candidates without asking. Conflicts still go to the user in yolo.
+
+Done when: every candidate is approved, rejected, or (conflicts) decided.
+
+### Step 4: Record
+
+One `record-rule` call per approved convention. Choose the most specific glob that covers the cited evidence from the mapping table below. The `note` is the bare convention: strip every trace of detection (see the ground rule). If `record-rule` is unavailable (rules disabled), report the full rule text so the user can enable `IGNIS_RULES_ENABLED` or add it by hand.
+
+Record this:
+
+> Entity mass assignment: use an explicit `$_accessible` whitelist (`'*' => false` plus named fields), not open `'*' => true`. Match it on new entities.
+
+Not this:
+
+> Entity mass assignment uses accessibleFields whitelists; open accessible is not used anywhere (13 whitelist, 0 open), e.g. `src/Model/Entity/Post.php`. Match the whitelist style in existing entities.
+
+Done when: every approved item has a successful tool response, and any failure is reported with its rule text.
+
+### Step 5: Summarize
+
+List recorded rules (file + title), conflicts the user deferred, notable no-signals, and remind the user to commit `.ai/rules` so their team and agents share the conventions.
+
+## Glob mapping: attach each rule to its namespace
+
+Pick the most specific path that covers the evidence. Never a lazy `src/**` when a subtree fits.
+
+| Convention domain | Glob |
+|---|---|
+| Entities | `src/Model/Entity/**` |
+| Tables / query / association | `src/Model/Table/**` |
+| Controllers, routing, request handling | `src/Controller/**` |
+| Forms / validation classes | `src/Form/**` |
+| Policies / authorization | `src/Policy/**` (plus `src/Controller/**` when enforced in controllers) |
+| Services / DTOs | `src/Service/**` / `src/Services/**` / `src/Dto/**` — whatever the app uses |
+| Enums | `src/**/Enum/**` / `src/**/Enums/**` (or the observed location) |
+| Commands | `src/Command/**` |
+| Templates / elements / cells | `templates/**` |
+{% if assist.hasPackage('zunnu/cake-htmx') %}
+| HTMX | `templates/**`, `src/Controller/**` |
+{% endif %}
+| Tests | `tests/**` |
+| Migrations / database | `config/Migrations/**`, `config/Seeds/**` |
+| Truly app-wide (rare, e.g. auth retrieval) | `src/**` |
+
+`record-rule` takes one glob. When a convention genuinely spans two domains (e.g. UUID keys touch entities and migrations), record it once under the primary domain and mention the secondary path in the note.
+
+## Edge cases
+
+- Rules disabled / `record-rule` missing: detection is read-only, so Steps 0 to 3 still run, and recording falls back to the manual path in Step 4.
+- Tiny or fresh app: most dimensions land on no-signal. Say so honestly ("not enough code to infer conventions yet") and record nothing.
+- Huge app: each dimension is a bounded grep plus a handful of file reads. Sample representative files; do not read everything.
+- Re-runs: reading `.ai/rules` in Step 0 makes re-runs incremental, so only new or undecided dimensions surface.
+- Non-standard layout (plugins, DDD): the open-ended pass catches the layout itself as convention #1; adapt the globs in the mapping table to the observed paths.

@@ -1,0 +1,17 @@
+@scoped(['tests/**'])
+# PHPUnit
+
+- This application uses PHPUnit for testing. All PHPUnit tests must extend the project's base test case classes.
+- Generate tests with `{{ assist.cakeCommand('bake test {Name}') }}` when appropriate, or add classes beside sibling tests.
+- If you see a test using Pest syntax in a PHPUnit-only area, follow the dominant convention in that directory.
+- Every time a test has been updated, run that singular test before moving on.
+- When tests relating to your feature pass, ask the user whether to run the full suite.
+- Tests should cover happy paths, failure paths, and edge cases.
+- You must not remove tests or test files without approval. These are core application code.
+
+## Running Tests
+- Run the minimal number of tests with an appropriate filter before finalizing.
+- Run all tests: `{{ assist.cakeCommand('test') }}`.
+- Run one file: `{{ assist.cakeCommand('test tests/TestCase/ExampleTest.php') }}`.
+- Filter by name: `{{ assist.cakeCommand('test --filter testName') }}` (recommended after editing a related file).
+@endscoped

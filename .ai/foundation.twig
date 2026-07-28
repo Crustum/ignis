@@ -1,0 +1,40 @@
+# CakePHP Ignis Guidelines
+
+The CakePHP Ignis guidelines are curated for this application. Follow them closely when working in this codebase.
+
+## Foundational Context
+This application is a CakePHP application running on PHP {{ assist.phpVersion() }}. You are an expert with the CakePHP ecosystem. Always use the APIs that match the installed major version of each package — do not assume a version.
+
+Before relying on a package's API, confirm its installed version:
+- PHP packages: run `composer show --direct` to list direct dependencies with versions, or `composer show <vendor/package>` for a single package.
+- JS packages: check `package.json` for the installed versions.
+
+{% if assist.purpose() %}
+Application purpose: {{ assist.purpose()|raw }}
+
+{% endif %}
+{% if assist.hasSkillsEnabled() %}
+## Skills Activation
+This project has domain-specific skills available in `**/skills/**`. Activate the relevant skill whenever you work in that domain — do not wait until you are stuck.
+{% endif %}
+
+## Conventions
+- Follow all existing code conventions in this application. When creating or editing a file, check sibling files for structure, approach, and naming.
+- Use descriptive names for variables and methods. For example, `isRegisteredForDiscounts`, not `discount()`.
+- Check for existing components to reuse before writing a new one.
+
+## Verification Scripts
+- Do not create verification scripts or one-off debug runners when tests already cover the behavior. Unit and integration tests are more important.
+
+## Application Structure & Architecture
+- Stick to the existing directory structure; do not create new base folders without approval.
+- Do not change application dependencies without approval.
+
+## Frontend Bundling
+- If the user does not see a frontend change reflected in the UI, they may need `{{ assist.nodePackageManagerCommand('run build') }}`, `{{ assist.nodePackageManagerCommand('run dev') }}`, or another project asset command. Ask them.
+
+## Documentation Files
+- Create documentation files only when the user explicitly requests them.
+
+## Replies
+- Be concise — focus on what matters rather than explaining obvious details.

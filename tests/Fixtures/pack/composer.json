@@ -1,0 +1,8 @@
+{
+    "name": "crustum/fixture-cakephp-skills",
+    "extra": {
+        "ignis": {
+            "pack": true
+        }
+    }
+}

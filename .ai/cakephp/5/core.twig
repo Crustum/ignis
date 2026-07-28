@@ -1,0 +1,76 @@
+# CakePHP 5
+
+Version-specific guidance for CakePHP 5.x (installed: {{ assist.packageVersion('cakephp/cakephp')|default('unknown') }}). Prefer the CakePHP 5 Book for exact API syntax.
+
+## Dependency injection and commands
+
+{% if assist.uses('cakephp/cakephp', '>=5.3') %}
+- CakePHP 5.3+ supports `#[Configure]` attributes and `TableContainer` for DI wiring. Prefer these when the application already uses attribute-based container configuration.
+{% endif %}
+{% if assist.uses('cakephp/cakephp', '>=5.4') %}
+- CakePHP 5.4+ console commands expose `$this->io` and `$this->args` on the command instance. Prefer them over older constructor/io injection patterns when writing new commands in this major.
+{% endif %}
+
+{% if assist.uses('cakephp/cakephp', '>=5.3') %}
+@scoped(['src/Controller/**', 'plugins/**/src/Controller/**', 'src/Middleware/**', 'src/Application.php'])
+## CakePHP 5.3+ HTTP and controllers
+
+- Use `RateLimitMiddleware` for request throttling instead of ad hoc rate-limit helpers when adding new limits.
+- Prefer pagination sortable-field builders from CakePHP 5.3+ when defining sortable pagination fields.
+@endscoped
+
+@scoped(['src/Model/**', 'plugins/**/src/Model/**'])
+## CakePHP 5.3+ ORM and queries
+
+- Prefer `SelectQuery::projectAs()` when mapping query results to DTOs instead of hand-rolled hydration loops.
+@endscoped
+
+@scoped(['src/Cache/**', 'config/app.php', 'config/app_local.php'])
+## CakePHP 5.3+ caching
+
+- Redis Cluster cache engine and cache package events are available in 5.3+. Use them when the deployment topology requires cluster-aware caching.
+@endscoped
+
+@scoped(['tests/**'])
+## CakePHP 5.3+ testing
+
+- Prefer integration-test redirect assertion helpers introduced in 5.3+ when asserting redirects.
+@endscoped
+{% endif %}
+
+{% if assist.uses('cakephp/cakephp', '>=5.4') %}
+@scoped(['src/Controller/**', 'plugins/**/src/Controller/**'])
+## CakePHP 5.4+ controllers and responses
+
+- Prefer `#[RequestToDto]` for request→DTO mapping when introducing new typed request payloads.
+- Use `JsonStreamResponse` for streamed JSON responses instead of buffering large payloads in memory.
+@endscoped
+
+@scoped(['src/Model/**', 'plugins/**/src/Model/**'])
+## CakePHP 5.4+ ORM defaults and associations
+
+- HasMany / BelongsToMany default strategy changed from `select` to `subquery`. Do not assume `select` unless the association or query explicitly sets it. Follow existing association strategy in sibling tables.
+- Nested `associated` options may follow `contain()`-style nesting. Prefer the application's existing `patchEntity` / `save` association shape.
+- Entity class-type checks apply on patch/save/delete/load — pass the expected entity type and do not rely on silent type coercion.
+- Prefer `Connection::afterCommit()` for side effects that must run only after a successful commit.
+@endscoped
+
+@scoped(['src/Command/**', 'plugins/**/src/Command/**'])
+## CakePHP 5.4+ commands (scoped)
+
+- When editing existing commands, keep the file's established io/args pattern. For new commands, `$this->io` / `$this->args` are preferred.
+@endscoped
+
+@scoped(['tests/**'])
+## CakePHP 5.4+ testing
+
+- Prefer `TestCase::mockModel()` (Mockery) when mocking table classes in unit tests if the project already uses Mockery.
+@endscoped
+
+@scoped(['src/View/**', 'templates/**', 'plugins/**/templates/**'])
+## CakePHP 5.4+ views and text
+
+- Prefer `FormHelper::enumOptions()` when building select options from backed enums.
+- Prefer `Text::mask()` for masking sensitive display strings.
+@endscoped
+{% endif %}

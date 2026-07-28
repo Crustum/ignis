@@ -1,0 +1,8 @@
+@scoped(['tests/**'])
+## Pest
+
+- This project uses Pest for testing. Add new Pest files beside existing tests in the directories this application already uses.
+- Run all tests: `{{ assist.binCommand('pest') }}` or `{{ assist.cakeCommand('test') }}` when the project uses the Cake test runner.
+- Filter tests: `{{ assist.binCommand('pest --filter=testName') }}`.
+- Do NOT delete tests without approval.
+@endscoped

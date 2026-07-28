@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - 'main'
+      - '1.x'
+  pull_request:
+    branches:
+      - '*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  testsuite:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ['8.2', '8.3', '8.4', '8.5']
+        os: [ubuntu-latest, windows-latest]
+        dependencies: [highest]
+        include:
+          - php-version: '8.2'
+            os: ubuntu-latest
+            dependencies: lowest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup MySQL
+      uses: ankane/setup-mysql@v1
+      with:
+        mysql-version: '8.4'
+        database: ignis_test
+        user: ignis
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: ${{ matrix.php-version }}
+        extensions: mbstring, intl, pdo_sqlite, sqlite3, pdo_mysql, pdo_pgsql, sodium
+        coverage: pcov
+        ini-values: apc.enable_cli = 1, zend.assertions = 1, pcov.directory = src
+
+    - name: Cache composer dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.composer/cache
+        key: ${{ runner.os }}-composer-${{ hashFiles('composer.json') }}
+
+    - name: composer install
+      shell: bash
+      run: |
+        if [[ "${{ matrix.dependencies }}" == 'lowest' ]]; then
+          composer update --prefer-lowest --prefer-stable --prefer-dist --no-progress
+        else
+          composer install --prefer-dist --no-progress
+        fi
+
+    - name: Setup problem matchers for PHPUnit
+      if: matrix.php-version == '8.2' && matrix.os == 'ubuntu-latest' && matrix.dependencies == 'highest'
+      run: echo "::add-matcher::${{ runner.tool_cache }}/phpunit.json"
+
+    - name: Run Pest with coverage
+      if: matrix.php-version == '8.2' && matrix.os == 'ubuntu-latest' && matrix.dependencies == 'highest'
+      shell: bash
+      run: |
+        export CODECOVERAGE=1
+        export db_dsn='mysql://ignis@127.0.0.1:3306/ignis_test?encoding=utf8mb4&timezone=UTC&cacheMetadata=true&quoteIdentifiers=true&persistent=false'
+        vendor/bin/pest --coverage --coverage-clover=coverage.xml
+
+    - name: Run Pest prefer-lowest (sequential, no paratest)
+      if: matrix.dependencies == 'lowest'
+      shell: bash
+      run: |
+        export IGNIS_PREFER_LOWEST=1
+        export db_dsn='mysql://ignis@127.0.0.1:3306/ignis_test?encoding=utf8mb4&timezone=UTC&cacheMetadata=true&quoteIdentifiers=true&persistent=false'
+        vendor/bin/pest
+
+    - name: Run Pest without coverage
+      if: matrix.dependencies != 'lowest' && (matrix.php-version != '8.2' || matrix.os != 'ubuntu-latest' || matrix.dependencies != 'highest')
+      shell: bash
+      run: |
+        export db_dsn='mysql://ignis@127.0.0.1:3306/ignis_test?encoding=utf8mb4&timezone=UTC&cacheMetadata=true&quoteIdentifiers=true&persistent=false'
+        vendor/bin/pest
+
+    - name: Submit code coverage
+      if: matrix.php-version == '8.2' && matrix.os == 'ubuntu-latest' && matrix.dependencies == 'highest'
+      uses: codecov/codecov-action@v3
+
+  cs-stan:
+    name: Coding Standard & Static Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.2'
+        extensions: mbstring, intl, pdo_sqlite, sqlite3, pdo_mysql, pdo_pgsql, sodium
+        coverage: none
+
+    - name: Cache composer dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.composer/cache
+        key: ${{ runner.os }}-composer-${{ hashFiles('composer.json') }}
+
+    - name: composer install
+      run: composer install --prefer-dist --no-progress
+
+    - name: Run PHP CodeSniffer
+      run: composer cs-check
+
+    - name: Run phpstan
+      run: composer stan

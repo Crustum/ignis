@@ -1,0 +1,90 @@
+# CakePHP 6
+
+Version-specific guidance for CakePHP 6.x (installed: {{ assist.packageVersion('cakephp/cakephp')|default('unknown') }}). CakePHP 6 is **not** backwards compatible with 5.x. Before upgrading, move to 5.4+ and clear deprecation warnings. Prefer the [6.0 Migration Guide](https://book.cakephp.org/6.x/appendices/6-0-migration-guide.html) and cakephp/upgrade for exhaustive rename lists.
+
+## Breaking changes agents must know
+
+- Leading-underscore protected methods and properties were renamed (underscore removed, or renamed for clarity). Do not invent `_saveMany`-style overrides — use the public/do* names from Cake 6 and the upgrade tool.
+- Console command `execute` no longer receives `$args` / `$io` as parameters. Use `$this->args` and `$this->io` on the command instance.
+- `EventManagerInterface::on()` swapped the 2nd and 3rd parameters (options moved after the callable). Prefer named parameters when registering listeners.
+- `Text::uuid()` generates UUID **v7** strings (not v4).
+- `Event::getSubject()` may return `null` when the event has no subject — do not assume a non-null subject.
+
+@scoped(['config/app.php', 'config/app_local.php', 'config/**/*.php'])
+## Datasource configuration
+
+- Every datasource connection must define `username`, `password`, and `database`. Cake 6 removed default privileged credentials — never omit these keys.
+- `ORM.mapJsonTypeForSqlite` was removed. SQLite maps columns with `json` in the name to `JsonType` by default.
+@endscoped
+
+@scoped(['src/Model/Entity/**', 'plugins/**/src/Model/Entity/**'])
+## Entities (patchable)
+
+- Entity `$_accessible` was renamed to `patchable`.
+- Use `setPatchable()` / `getPatchable()` / `isPatchable()` instead of `setAccess()` / `getAccessible()` / `isAccessible()`.
+- Query/save option `accessibleFields` was renamed to `patchableFields`.
+- Prefer `hasValue()` over removed `EntityTrait::isEmpty()`.
+@endscoped
+
+@scoped(['src/Model/**', 'plugins/**/src/Model/**'])
+## ORM and associations
+
+- Prefer Cake 6 method names from the migration guide / upgrade tool (for example `doSaveMany()`, `doDeleteMany()`, association `doUnlink()`, TreeBehavior `doMoveUp()` / `doMoveDown()` / `doRemoveFromTree()`, SelectQuery `ormDecorateResults()` / `ormExecute()`).
+- Do not reintroduce underscore-prefixed overrides that existed in 5.x.
+@endscoped
+
+@scoped(['config/routes.php', 'src/Application.php', 'src/Controller/**', 'plugins/**/src/Controller/**'])
+## Routing
+
+- `RouteBuilder::scope()`, `prefix()`, and `resources()` swapped the 2nd and 3rd parameters. Prefer named parameters.
+- Attribute routing is available via `RouteBuilder::connectAttributes()` and `Cake\Routing\Attribute` (`#[Get]`, `#[Post]`, `#[Scope]`, `#[Resource]`, …). Use attributes when the application already adopts them; otherwise follow existing `config/routes.php` style.
+@endscoped
+
+@scoped(['src/Controller/**', 'plugins/**/src/Controller/**', 'src/Middleware/**'])
+## HTTP request and pagination
+
+- Do not use `$request->getParam('?')` for query params — use `$request->getQueryParams()`.
+- Prefer public request helpers over removed `_getCookies()` / `_getJson()` / `_getXml()` / `_getHeaders()` / `_getBody()`.
+- Prefer `$request->isType()` over removed `_is()`.
+- `PaginatedInterface` extends `IteratorAggregate` (not only `Traversable`).
+@endscoped
+
+@scoped(['src/Command/**', 'plugins/**/src/Command/**'])
+## Console commands
+
+- Implement `execute()` without `$args` / `$io` parameters; read `$this->args` and `$this->io`.
+- Prefer `validateChoice()` over renamed `validChoice()` on console input arguments/options.
+- Prefer renamed stream helpers such as `ConsoleOutput::writeStream()` when overriding output behavior.
+@endscoped
+
+@scoped(['src/Form/**', 'plugins/**/src/Form/**'])
+## Forms
+
+- Prefer `Form::process()` over removed `_execute()`.
+@endscoped
+
+@scoped(['src/Mailer/**', 'plugins/**/src/Mailer/**'])
+## Mailer transports
+
+- Prefer `connectSmtp()` / `disconnectSmtp()` on SMTP transports instead of underscore-prefixed connect/disconnect overrides.
+@endscoped
+
+@scoped(['src/View/**', 'templates/**', 'plugins/**/templates/**', 'plugins/**/src/View/**'])
+## Views and helpers
+
+- `FileWidget` was removed — file inputs use the standard input widget.
+- View `$_helpers` was renamed to `helperRegistry` (`$helpers` remains config).
+- Prefer `View::renderFile()` over removed `_render()`.
+- Prefer `PaginatorHelper::buildNumbers()` over removed `_numbers()`.
+- Separate `escape` (content/labels) from `escapeAttributes` (HTML attributes); set both to `false` when neither should escape.
+- Breadcrumb template key `title` → `content` where it means label/content, not an attribute.
+- FormHelper template `multicheckboxTitle` → `multicheckboxLabel`.
+@endscoped
+
+@scoped(['src/**', 'plugins/**/src/**'])
+## Utility text and HTTP client
+
+- `Text::insert()` placeholders default to `{foo}` (not `:foo`). Restore `:foo` only via `before` / `after` options when matching legacy templates.
+- Prefer `Http\Client::processRequest()` (and stream adapter equivalents) over underscore-prefixed send helpers.
+- Prefer Hash/Text/Xml `do*` method names from the migration guide when overriding internals.
+@endscoped

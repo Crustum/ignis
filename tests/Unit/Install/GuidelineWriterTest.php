@@ -1,0 +1,395 @@
+<?php
+
+declare(strict_types=1);
+
+use Crustum\Ignis\Contracts\SupportsGuidelines;
+use Crustum\Ignis\Install\GuidelineWriter;
+
+test('it returns NOOP when guidelines are empty', function (): void {
+    $agent = Mockery::mock(SupportsGuidelines::class);
+    $agent->shouldReceive('guidelinesPath')->andReturn('/tmp/test.md');
+    $agent->shouldReceive('transformGuidelines')->andReturnUsing(fn ($markdown) => $markdown);
+
+    $writer = new GuidelineWriter($agent);
+
+    $result = $writer->write('');
+    expect($result)->toBe(GuidelineWriter::NOOP);
+});
+
+test('it creates directory when it does not exist', function (): void {
+    $tempDir = sys_get_temp_dir().'/ignis_test_'.uniqid();
+    $filePath = $tempDir.'/subdir/test.md';
+
+    $agent = Mockery::mock(SupportsGuidelines::class);
+    $agent->shouldReceive('guidelinesPath')->andReturn($filePath);
+    $agent->shouldReceive('frontmatter')->andReturn(false);
+    $agent->shouldReceive('transformGuidelines')->andReturnUsing(fn ($markdown) => $markdown);
+
+    $writer = new GuidelineWriter($agent);
+    $writer->write('test guidelines');
+
+    expect(dirname($filePath))->toBeDirectory()
+        ->and($filePath)->toBeFile();
+
+    // Cleanup
+    unlink($filePath);
+    rmdir(dirname($filePath));
+    rmdir($tempDir);
+});
+
+test('it throws exception when directory creation fails', function (): void {
+    // Use a path that cannot be created (root directory with insufficient permissions)
+    $filePath = '/root/ignis_test/test.md';
+
+    $agent = Mockery::mock(SupportsGuidelines::class);
+    $agent->shouldReceive('guidelinesPath')->andReturn($filePath);
+    $agent->shouldReceive('frontmatter')->andReturn(false);
+    $agent->shouldReceive('transformGuidelines')->andReturnUsing(fn ($markdown) => $markdown);
+
+    $writer = new GuidelineWriter($agent);
+
+    expect(fn (): int => $writer->write('test guidelines'))
+        ->toThrow(RuntimeException::class, 'Failed to create directory: /root/ignis_test');
+})->skipOnWindows();
+
+test('it writes guidelines to new file', function (): void {
+    $tempFile = tempnam(sys_get_temp_dir(), 'ignis_test_');
+
+    $agent = Mockery::mock(SupportsGuidelines::class);
+    $agent->shouldReceive('guidelinesPath')->andReturn($tempFile);
+    $agent->shouldReceive('frontmatter')->andReturn(false);
+    $agent->shouldReceive('transformGuidelines')->andReturnUsing(fn ($markdown) => $markdown);
+
+    $writer = new GuidelineWriter($agent);
+    $writer->write('test guidelines content');
+
+    $content = file_get_contents($tempFile);
+    expect($content)->toBe("<cake-ignis-guidelines>\ntest guidelines content\n\n</cake-ignis-guidelines>\n");
+
+    unlink($tempFile);
+});
+
+test('it writes guidelines to existing file without existing guidelines', function (): void {
+    $tempFile = tempnam(sys_get_temp_dir(), 'ignis_test_');
+    file_put_contents($tempFile, "# Existing content\n\nSome text here.");
+
+    $agent = Mockery::mock(SupportsGuidelines::class);
+    $agent->shouldReceive('guidelinesPath')->andReturn($tempFile);
+    $agent->shouldReceive('frontmatter')->andReturn(false);
+    $agent->shouldReceive('transformGuidelines')->andReturnUsing(fn ($markdown) => $markdown);
+
+    $writer = new GuidelineWriter($agent);
+    $writer->write('new guidelines');
+
+    $content = file_get_contents($tempFile);
+    expect($content)->toBe("# Existing content\n\nSome text here.\n\n===\n\n<cake-ignis-guidelines>\nnew guidelines\n\n</cake-ignis-guidelines>\n");
+
+    unlink($tempFile);
+});
+
+test('it replaces existing guidelines in-place', function (): void {
+    $tempFile = tempnam(sys_get_temp_dir(), 'ignis_test_');
+    $initialContent = "# Header\n\n<cake-ignis-guidelines>\nold guidelines\n</cake-ignis-guidelines>\n\n# Footer";
+    file_put_contents($tempFile, $initialContent);
+
+    $agent = Mockery::mock(SupportsGuidelines::class);
+    $agent->shouldReceive('guidelinesPath')->andReturn($tempFile);
+    $agent->shouldReceive('frontmatter')->andReturn(false);
+    $agent->shouldReceive('transformGuidelines')->andReturnUsing(fn ($markdown) => $markdown);
+
+    $writer = new GuidelineWriter($agent);
+    $writer->write('updated guidelines');
+
+    $content = file_get_contents($tempFile);
+    expect($content)->toBe("# Header\n\n<cake-ignis-guidelines>\nupdated guidelines\n\n</cake-ignis-guidelines>\n\n# Footer\n");
+
+    unlink($tempFile);
+});
+
+test('it avoids adding extra newline if one already exists', function (): void {
+    $tempFile = tempnam(sys_get_temp_dir(), 'ignis_test_');
+    $initialContent = "# Header\n\n<cake-ignis-guidelines>\nold guidelines\n</cake-ignis-guidelines>\n\n# Footer\n";
+    file_put_contents($tempFile, $initialContent);
+
+    $agent = Mockery::mock(SupportsGuidelines::class);
+    $agent->shouldReceive('guidelinesPath')->andReturn($tempFile);
+    $agent->shouldReceive('frontmatter')->andReturn(false);
+    $agent->shouldReceive('transformGuidelines')->andReturnUsing(fn ($markdown) => $markdown);
+
+    $writer = new GuidelineWriter($agent);
+    $writer->write('updated guidelines');
+
+    $content = file_get_contents($tempFile);
+    expect($content)->toBe("# Header\n\n<cake-ignis-guidelines>\nupdated guidelines\n\n</cake-ignis-guidelines>\n\n# Footer\n");
+
+    // Assert no double newline at the end
+    expect(substr($content, -2))->not->toBe("\n\n");
+    // Assert still ends with exactly one newline
+    expect(substr($content, -1))->toBe("\n");
+
+    unlink($tempFile);
+});
+
+test('it handles multiline existing guidelines', function (): void {
+    $tempFile = tempnam(sys_get_temp_dir(), 'ignis_test_');
+    $initialContent = "Start\n<cake-ignis-guidelines>\nline 1\nline 2\nline 3\n</cake-ignis-guidelines>\nEnd";
+    file_put_contents($tempFile, $initialContent);
+
+    $agent = Mockery::mock(SupportsGuidelines::class);
+    $agent->shouldReceive('guidelinesPath')->andReturn($tempFile);
+    $agent->shouldReceive('frontmatter')->andReturn(false);
+    $agent->shouldReceive('transformGuidelines')->andReturnUsing(fn ($markdown) => $markdown);
+
+    $writer = new GuidelineWriter($agent);
+    $writer->write('single line');
+
+    $content = file_get_contents($tempFile);
+    // Should replace in-place, preserving structure
+    expect($content)->toBe("Start\n<cake-ignis-guidelines>\nsingle line\n\n</cake-ignis-guidelines>\nEnd\n");
+
+    unlink($tempFile);
+});
+
+test('it handles multiple guideline blocks', function (): void {
+    $tempFile = tempnam(sys_get_temp_dir(), 'ignis_test_');
+    $initialContent = "Start\n<cake-ignis-guidelines>\nfirst\n</cake-ignis-guidelines>\nMiddle\n<cake-ignis-guidelines>\nsecond\n</cake-ignis-guidelines>\nEnd";
+    file_put_contents($tempFile, $initialContent);
+
+    $agent = Mockery::mock(SupportsGuidelines::class);
+    $agent->shouldReceive('guidelinesPath')->andReturn($tempFile);
+    $agent->shouldReceive('frontmatter')->andReturn(false);
+    $agent->shouldReceive('transformGuidelines')->andReturnUsing(fn ($markdown) => $markdown);
+
+    $writer = new GuidelineWriter($agent);
+    $writer->write('replacement');
+
+    $content = file_get_contents($tempFile);
+    // Should replace first occurrence, second block remains untouched due to non-greedy matching
+    expect($content)->toBe("Start\n<cake-ignis-guidelines>\nreplacement\n\n</cake-ignis-guidelines>\nMiddle\n<cake-ignis-guidelines>\nsecond\n</cake-ignis-guidelines>\nEnd\n");
+
+    unlink($tempFile);
+});
+
+test('it throws exception when file cannot be opened', function (): void {
+    // Use a directory path instead of file path to cause fopen to fail
+    $dirPath = sys_get_temp_dir();
+
+    $agent = Mockery::mock(SupportsGuidelines::class);
+    $agent->shouldReceive('guidelinesPath')->andReturn($dirPath);
+    $agent->shouldReceive('frontmatter')->andReturn(false);
+    $agent->shouldReceive('transformGuidelines')->andReturnUsing(fn ($markdown) => $markdown);
+
+    $writer = new GuidelineWriter($agent);
+
+    expect(fn (): int => $writer->write('test guidelines'))
+        ->toThrow(RuntimeException::class, "Failed to open file: {$dirPath}");
+})->skipOnWindows();
+
+test('it preserves file content structure with proper spacing', function (): void {
+    $tempFile = tempnam(sys_get_temp_dir(), 'ignis_test_');
+    $initialContent = "# Title\n\nParagraph 1\n\nParagraph 2";
+    file_put_contents($tempFile, $initialContent);
+
+    $agent = Mockery::mock(SupportsGuidelines::class);
+    $agent->shouldReceive('guidelinesPath')->andReturn($tempFile);
+    $agent->shouldReceive('frontmatter')->andReturn(false);
+    $agent->shouldReceive('transformGuidelines')->andReturnUsing(fn ($markdown) => $markdown);
+
+    $writer = new GuidelineWriter($agent);
+    $writer->write('my guidelines');
+
+    $content = file_get_contents($tempFile);
+    expect($content)->toBe("# Title\n\nParagraph 1\n\nParagraph 2\n\n===\n\n<cake-ignis-guidelines>\nmy guidelines\n\n</cake-ignis-guidelines>\n");
+
+    unlink($tempFile);
+});
+
+test('it handles empty file', function (): void {
+    $tempFile = tempnam(sys_get_temp_dir(), 'ignis_test_');
+    file_put_contents($tempFile, '');
+
+    $agent = Mockery::mock(SupportsGuidelines::class);
+    $agent->shouldReceive('guidelinesPath')->andReturn($tempFile);
+    $agent->shouldReceive('frontmatter')->andReturn(false);
+    $agent->shouldReceive('transformGuidelines')->andReturnUsing(fn ($markdown) => $markdown);
+
+    $writer = new GuidelineWriter($agent);
+    $writer->write('first guidelines');
+
+    $content = file_get_contents($tempFile);
+    expect($content)->toBe("<cake-ignis-guidelines>\nfirst guidelines\n\n</cake-ignis-guidelines>\n");
+
+    unlink($tempFile);
+});
+
+test('it handles file with only whitespace', function (): void {
+    $tempFile = tempnam(sys_get_temp_dir(), 'ignis_test_');
+    file_put_contents($tempFile, "   \n\n  \t  \n");
+
+    $agent = Mockery::mock(SupportsGuidelines::class);
+    $agent->shouldReceive('guidelinesPath')->andReturn($tempFile);
+    $agent->shouldReceive('frontmatter')->andReturn(false);
+    $agent->shouldReceive('transformGuidelines')->andReturnUsing(fn ($markdown) => $markdown);
+
+    $writer = new GuidelineWriter($agent);
+    $writer->write('clean guidelines');
+
+    $content = file_get_contents($tempFile);
+    expect($content)->toBe("<cake-ignis-guidelines>\nclean guidelines\n\n</cake-ignis-guidelines>\n");
+
+    unlink($tempFile);
+});
+
+test('it does not interfere with other XML-like tags', function (): void {
+    $tempFile = tempnam(sys_get_temp_dir(), 'ignis_test_');
+    $initialContent = "# Title\n\n<other-rules>\nShould not be touched\n</other-rules>\n\n<cake-ignis-guidelines>\nOld guidelines\n</cake-ignis-guidelines>\n\n<custom-config>\nAlso untouched\n</custom-config>";
+    file_put_contents($tempFile, $initialContent);
+
+    $agent = Mockery::mock(SupportsGuidelines::class);
+    $agent->shouldReceive('guidelinesPath')->andReturn($tempFile);
+    $agent->shouldReceive('frontmatter')->andReturn(false);
+    $agent->shouldReceive('transformGuidelines')->andReturnUsing(fn ($markdown) => $markdown);
+
+    $writer = new GuidelineWriter($agent);
+    $result = $writer->write('new guidelines');
+
+    expect($result)->toBe(GuidelineWriter::REPLACED);
+    $content = file_get_contents($tempFile);
+    expect($content)->toBe("# Title\n\n<other-rules>\nShould not be touched\n</other-rules>\n\n<cake-ignis-guidelines>\nnew guidelines\n\n</cake-ignis-guidelines>\n\n<custom-config>\nAlso untouched\n</custom-config>\n");
+
+    unlink($tempFile);
+});
+
+test('it preserves user content after guidelines when replacing', function (): void {
+    $tempFile = tempnam(sys_get_temp_dir(), 'ignis_test_');
+    $initialContent = "# My Project\n\n<cake-ignis-guidelines>\nold guidelines\n</cake-ignis-guidelines>\n\n# User Added Section\nThis content was added by the user after the guidelines.\n\n## Another user section\nMore content here.";
+    file_put_contents($tempFile, $initialContent);
+
+    $agent = Mockery::mock(SupportsGuidelines::class);
+    $agent->shouldReceive('guidelinesPath')->andReturn($tempFile);
+    $agent->shouldReceive('frontmatter')->andReturn(false);
+    $agent->shouldReceive('transformGuidelines')->andReturnUsing(fn ($markdown) => $markdown);
+
+    $writer = new GuidelineWriter($agent);
+    $writer->write('updated guidelines from ignis');
+
+    $content = file_get_contents($tempFile);
+
+    // Verify guidelines were replaced in-place
+    expect($content)->toContain('<cake-ignis-guidelines>')
+        ->and($content)->toContain('updated guidelines from ignis');
+
+    // Verify user content after guidelines is preserved
+    expect($content)->toContain(
+        '# User Added Section',
+        'This content was added by the user after the guidelines.',
+        '## Another user section',
+        'More content here.'
+    );
+
+    // Verify exact structure
+    expect($content)->toBe("# My Project\n\n<cake-ignis-guidelines>\nupdated guidelines from ignis\n\n</cake-ignis-guidelines>\n\n# User Added Section\nThis content was added by the user after the guidelines.\n\n## Another user section\nMore content here.\n");
+
+    unlink($tempFile);
+});
+
+test('it preserves dollar-sign literals in guidelines when replacing existing block', function (): void {
+    $tempFile = tempnam(sys_get_temp_dir(), 'ignis_test_');
+    $initialContent = "# My Project\n\n<cake-ignis-guidelines>\nold guidelines\n</cake-ignis-guidelines>\n";
+    file_put_contents($tempFile, $initialContent);
+
+    $agent = Mockery::mock(SupportsGuidelines::class);
+    $agent->shouldReceive('guidelinesPath')->andReturn($tempFile);
+    $agent->shouldReceive('frontmatter')->andReturn(false);
+    $agent->shouldReceive('transformGuidelines')->andReturnUsing(fn ($markdown) => $markdown);
+
+    $writer = new GuidelineWriter($agent);
+    $writer->write('Apple Developer Program renewal ($99/yr) before the anniversary');
+
+    $content = file_get_contents($tempFile);
+    expect($content)->toContain('($99/yr)');
+
+    unlink($tempFile);
+});
+
+test('it preserves backslash and dollar patterns in guidelines when replacing existing block', function (): void {
+    $tempFile = tempnam(sys_get_temp_dir(), 'ignis_test_');
+    $initialContent = "# My Project\n\n<cake-ignis-guidelines>\nold guidelines\n</cake-ignis-guidelines>\n";
+    file_put_contents($tempFile, $initialContent);
+
+    $agent = Mockery::mock(SupportsGuidelines::class);
+    $agent->shouldReceive('guidelinesPath')->andReturn($tempFile);
+    $agent->shouldReceive('frontmatter')->andReturn(false);
+    $agent->shouldReceive('transformGuidelines')->andReturnUsing(fn ($markdown) => $markdown);
+
+    $writer = new GuidelineWriter($agent);
+    $writer->write('Use $1 and $2 capture groups, cost $99, path C:\\Users\\dev');
+
+    $content = file_get_contents($tempFile);
+    expect($content)
+        ->toContain('$1')
+        ->toContain('$2')
+        ->toContain('$99')
+        ->toContain('C:\\Users\\dev');
+
+    unlink($tempFile);
+});
+
+test('it retries file locking on contention', function (): void {
+    expect(true)->toBeTrue(); // Mark as passing for now
+})->todo();
+
+test('it adds frontmatter when agent supports it and file has no existing frontmatter', function (): void {
+    $tempFile = tempnam(sys_get_temp_dir(), 'ignis_test_');
+    file_put_contents($tempFile, "# Existing content\n\nSome text here.");
+
+    $agent = Mockery::mock(SupportsGuidelines::class);
+    $agent->shouldReceive('guidelinesPath')->andReturn($tempFile);
+    $agent->shouldReceive('frontmatter')->andReturn(true);
+    $agent->shouldReceive('transformGuidelines')->andReturnUsing(fn ($markdown) => $markdown);
+
+    $writer = new GuidelineWriter($agent);
+    $writer->write('new guidelines');
+
+    $content = file_get_contents($tempFile);
+    expect($content)->toBe("---\nalwaysApply: true\n---\n# Existing content\n\nSome text here.\n\n===\n\n<cake-ignis-guidelines>\nnew guidelines\n\n</cake-ignis-guidelines>\n");
+
+    unlink($tempFile);
+});
+
+test('it does not add frontmatter when agent supports it but file already has frontmatter', function (): void {
+    $tempFile = tempnam(sys_get_temp_dir(), 'ignis_test_');
+    file_put_contents($tempFile, "---\ncustomOption: true\n---\n# Existing content\n\nSome text here.");
+
+    $agent = Mockery::mock(SupportsGuidelines::class);
+    $agent->shouldReceive('guidelinesPath')->andReturn($tempFile);
+    $agent->shouldReceive('frontmatter')->andReturn(true);
+    $agent->shouldReceive('transformGuidelines')->andReturnUsing(fn ($markdown) => $markdown);
+
+    $writer = new GuidelineWriter($agent);
+    $writer->write('new guidelines');
+
+    $content = file_get_contents($tempFile);
+    expect($content)->toBe("---\ncustomOption: true\n---\n# Existing content\n\nSome text here.\n\n===\n\n<cake-ignis-guidelines>\nnew guidelines\n\n</cake-ignis-guidelines>\n");
+
+    unlink($tempFile);
+});
+
+test('it does not add frontmatter when agent does not support it', function (): void {
+    $tempFile = tempnam(sys_get_temp_dir(), 'ignis_test_');
+    file_put_contents($tempFile, "# Existing content\n\nSome text here.");
+
+    $agent = Mockery::mock(SupportsGuidelines::class);
+    $agent->shouldReceive('guidelinesPath')->andReturn($tempFile);
+    $agent->shouldReceive('frontmatter')->andReturn(false);
+    $agent->shouldReceive('transformGuidelines')->andReturnUsing(fn ($markdown) => $markdown);
+
+    $writer = new GuidelineWriter($agent);
+    $result = $writer->write('new guidelines');
+
+    expect($result)->toBe(GuidelineWriter::NEW);
+    $content = file_get_contents($tempFile);
+    expect($content)->toBe("# Existing content\n\nSome text here.\n\n===\n\n<cake-ignis-guidelines>\nnew guidelines\n\n</cake-ignis-guidelines>\n");
+
+    unlink($tempFile);
+});

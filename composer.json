@@ -1,0 +1,100 @@
+{
+    "name": "crustum/ignis",
+    "description": "CakePHP Ignis accelerates AI-assisted development with guidelines, skills, and MCP tooling",
+    "type": "cakephp-plugin",
+    "license": "MIT",
+    "keywords": [
+        "cakephp",
+        "ignis",
+        "ai",
+        "mcp",
+        "guidelines"
+    ],
+    "authors": [
+        {
+            "name": "Evgeny Tomenko",
+            "homepage": "https://github.com/skie"
+        }
+    ],
+    "require": {
+        "php": ">=8.2",
+        "cakephp/cakephp": "^5.3",
+        "crustum/mcp": "dev-main",
+        "crustum/inspector": "^1.0",
+        "crustum/cakephp-skills": "dev-main",
+        "crustum/plugin-manifest": "^1.1",
+        "crustum/prompts": "^1.0",
+        "laravel/prompts": "^0.3.21",
+        "symfony/filesystem": "^7.2|^8.0",
+        "symfony/finder": "^7.2|^8.0",
+        "symfony/yaml": "^7.2|^8.0",
+        "twig/twig": "^3.27"
+    },
+    "require-dev": {
+        "cakephp/bake": "^3.0",
+        "phpunit/phpunit": "^10.5.5 || ^11.1.3 || ^12.5.0",
+        "pestphp/pest": "^3.0|^4.1",
+        "crustum/essentia": "^1.0",
+        "pestphp/pest-plugin-type-coverage": "^3.0",
+        "cakephp/cakephp-codesniffer": "^5.0",
+        "phpstan/phpstan": "^2.2.2,<2.2.6",
+        "rector/rector": "^2.5",
+        "mockery/mockery": "^1.6"
+    },
+    "autoload": {
+        "psr-4": {
+            "Crustum\\Ignis\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "TestApp\\": "tests/TestApp/",
+            "Crustum\\Ignis\\Test\\": "tests/",
+            "Crustum\\Ignis\\Test\\Fixtures\\": "tests/Fixtures/"
+        },
+        "files": [
+            "tests/Support/functions.php",
+            "tests/Support/container_helpers.php",
+            "tests/Support/console_helpers.php",
+            "tests/Support/github_helpers.php",
+            "tests/Support/add_skill_helpers.php",
+            "tests/Support/mcp_helpers.php",
+            "tests/Support/inspector_helpers.php"
+        ]
+    },
+    "scripts": {
+        "check": [
+            "@cs-check",
+            "@rector-check",
+            "@test",
+            "@analyse"
+        ],
+        "fix": [
+            "@cs-fix",
+            "@rector-fix",
+            "@cs-fix",
+            "@analyse"
+        ],
+        "analyse": [
+            "@stan"
+        ],
+        "cs-check": "phpcs -p --standard=phpcs.xml src/",
+        "cs-fix": "phpcbf --standard=phpcs.xml src/",
+        "test": "pest",
+        "test:unit": "pest --testsuite=Unit",
+        "rector-check": "vendor/bin/rector process --dry-run",
+        "rector-fix": "vendor/bin/rector process",
+        "stan": "phpstan analyse src/",
+        "stan-baseline": "phpstan analyse --generate-baseline"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true,
+            "pestphp/pest-plugin": true,
+            "php-http/discovery": false
+        },
+        "platform-check": false
+    }
+}

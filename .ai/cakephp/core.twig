@@ -1,0 +1,35 @@
+# Do Things the CakePHP Way
+
+- Use Bake to generate application code: `{{ assist.cakeCommand('bake') }}` lists generators; `{{ assist.cakeCommand('bake [command] -h') }}` shows options for migrations, controllers, tables, entities, fixtures, seeders, and tests.
+- Pass non-interactive flags when baking in automation so commands do not prompt for input.
+- If you need a generic PHP class, add it under `src/` following sibling namespace and directory conventions.
+
+@scoped(['src/Model/**'])
+### Tables, Entities, and Fixtures
+- CakePHP uses **Table** classes for persistence/query logic and **Entity** classes for row objects.
+- When adding a new table, create matching **fixtures** (and seeders when useful). Check `{{ assist.cakeCommand('bake fixture -h') }}` and `{{ assist.cakeCommand('bake seed -h') }}` before hand-writing boilerplate.
+- Load tables with `$this->fetchTable('TableAlias')` in controllers and commands. Prefer existing table methods over ad hoc queries.
+@endscoped
+
+@scoped(['src/Controller/**', 'plugins/**/src/Controller/**', 'config/routes.php'])
+## Controllers and Plugins
+- Controllers live in `src/Controller/` (or `plugins/{Plugin}/src/Controller/`). Match existing action naming, authorization, and response patterns.
+- Plugins use plugin-namespace style paths. Register routes, bootstrap, and middleware in the plugin class — follow sibling plugins in this application.
+
+## APIs and JSON Responses
+- For APIs, use JsonView serialization, dedicated view classes, or the project's existing API response pattern. Do not introduce a new response style unless the application already uses one elsewhere.
+@endscoped
+
+## URL Generation
+- Prefer named routes with `Router::url(['_name' => 'route.name'], true)` or array URLs. Use the MCP `get-absolute-url` tool before sharing URLs with the user.
+
+@scoped(['tests/**'])
+## Testing
+- Use **fixtures** for database state in integration tests. Reuse existing fixture classes and factory helpers before creating new setup code.
+- Faker: follow project conventions for `$this->faker` or helper functions such as `fake()`.
+- Generate tests with `{{ assist.cakeCommand('bake test {Name}') }}` when Bake fits the case; otherwise add Pest or PHPUnit files beside sibling tests in `tests/TestCase/`, `tests/TestCase/Integration/`, or the directories this project already uses.
+- Run the smallest relevant test set while iterating, then ask whether to run the full suite when the related tests pass.
+@endscoped
+
+## Frontend Assets
+- If a frontend change is not visible in the browser, the user may need `{{ assist.nodePackageManagerCommand('run build') }}`, `{{ assist.nodePackageManagerCommand('run dev') }}`, or a project-specific asset command.

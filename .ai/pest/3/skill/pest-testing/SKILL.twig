@@ -1,0 +1,88 @@
+---
+name: pest-testing
+description: "Use this skill for Pest PHP testing in CakePHP projects. Trigger whenever any test is being written, edited, fixed, or refactored — including fixing tests that broke after a code change, adding assertions, converting PHPUnit to Pest, adding datasets, and TDD workflows. Always activate when the user asks how to write something in Pest, mentions test files or directories, or architecture tests. Covers: test()/it()/expect() syntax, datasets, mocking, arch(), fixtures, and Pest 3 features. Do not use for editing fixtures, migrations, controllers, tables, entities, or non-test PHP code."
+license: MIT
+metadata:
+  author: crustum
+---
+# Pest Testing 3
+
+## Basic Usage
+
+### Creating Tests
+
+All tests must be written using Pest. Add new files beside existing tests in `tests/TestCase/`, `tests/TestCase/Integration/`, or the directories this project already uses — match sibling naming and bootstrap patterns.
+
+### Test Organization
+
+- Follow the directory layout already used in this repository.
+- Do NOT remove tests without approval — these are core application code.
+- Test happy paths, failure paths, and edge cases.
+
+### Basic Test Structure
+
+Pest supports both `test()` and `it()`. Before writing new tests, check existing files in the same directory and match the project's convention.
+
+@ignissnippet("Basic Pest Test Example", "php")
+it('is true', function () {
+    expect(true)->toBeTrue();
+});
+@endignissnippet
+
+### Running Tests
+
+- Run minimal tests with filter before finalizing: `{{ assist.binCommand('pest --filter=testName') }}`.
+- Run all tests: `{{ assist.binCommand('pest') }}` or `{{ assist.cakeCommand('test') }}` when the project uses Cake's runner.
+- Run one file: `{{ assist.binCommand('pest tests/TestCase/ExampleTest.php') }}`.
+
+## Assertions
+
+Prefer specific response assertions over generic status checks when using integration-style tests.
+
+## Mocking
+
+Import the mock helper this project uses before calling `mock()`. Check sibling tests for the correct namespace.
+
+## Datasets
+
+Use datasets for repetitive tests (validation rules, etc.):
+
+@ignissnippet("Pest Dataset Example", "php")
+it('has emails', function (string $email) {
+    expect($email)->not->toBeEmpty();
+})->with([
+    'james' => 'james@example.com',
+    'taylor' => 'taylor@example.com',
+]);
+@endignissnippet
+
+## Pest 3 Features
+
+### Architecture Testing
+
+Pest 3 includes architecture testing to enforce code conventions:
+
+@ignissnippet("Architecture Test Example", "php")
+arch('controllers')
+    ->expect('App\\Controller')
+    ->toHaveSuffix('Controller');
+
+arch('tables')
+    ->expect('App\\Model\\Table')
+    ->toExtend('Cake\\ORM\\Table');
+
+arch('no debugging')
+    ->expect(['dd', 'dump', 'ray'])
+    ->not->toBeUsed();
+@endignissnippet
+
+### Type Coverage
+
+Pest 3 provides type coverage analysis. Run with `--type-coverage` when needed.
+
+## Common Pitfalls
+
+- Using generic status assertions when a specific assertion exists
+- Forgetting datasets for repetitive validation tests
+- Deleting tests without approval
+- Ignoring existing fixture/setup patterns used by sibling CakePHP tests

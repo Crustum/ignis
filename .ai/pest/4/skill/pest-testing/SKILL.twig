@@ -1,0 +1,110 @@
+---
+name: pest-testing
+description: "Use this skill for Pest PHP testing in CakePHP projects. Trigger whenever any test is being written, edited, fixed, or refactored — including fixing tests that broke after a code change, adding assertions, converting PHPUnit to Pest, adding datasets, and TDD workflows. Always activate when the user asks how to write something in Pest, mentions test files or directories (including browser tests), or needs architecture tests. Covers: test()/it()/expect() syntax, datasets, mocking, browser testing, smoke testing, arch(), fixtures, and Pest 4 features. Do not use for editing fixtures, migrations, controllers, tables, entities, or non-test PHP code."
+license: MIT
+metadata:
+  author: crustum
+---
+# Pest Testing 4
+
+## Basic Usage
+
+### Creating Tests
+
+All tests must be written using Pest. Add new files beside existing tests in the directories this project already uses — match sibling naming, bootstrap, and fixture patterns.
+
+### Test Organization
+
+- Unit/integration tests: follow the layout already present under `tests/`.
+- Browser tests: use the browser test directory this project defines when browser testing is enabled.
+- Do NOT remove tests without approval — these are core application code.
+
+### Basic Test Structure
+
+Pest supports both `test()` and `it()`. Before writing new tests, check existing files in the same directory and match the project's convention.
+
+@ignissnippet("Basic Pest Test Example", "php")
+it('is true', function () {
+    expect(true)->toBeTrue();
+});
+@endignissnippet
+
+### Running Tests
+
+- Run minimal tests with filter before finalizing: `{{ assist.binCommand('pest --filter=testName') }}`.
+- Run all tests: `{{ assist.binCommand('pest') }}` or `{{ assist.cakeCommand('test') }}` when the project uses Cake's runner.
+- Run one file: `{{ assist.binCommand('pest tests/TestCase/ExampleTest.php') }}`.
+
+## Assertions
+
+Prefer specific response assertions over generic status checks when using integration-style tests.
+
+## Mocking
+
+Import the mock helper this project uses before calling `mock()`. Check sibling tests for the correct namespace.
+
+## Datasets
+
+Use datasets for repetitive tests (validation rules, etc.):
+
+@ignissnippet("Pest Dataset Example", "php")
+it('has emails', function (string $email) {
+    expect($email)->not->toBeEmpty();
+})->with([
+    'james' => 'james@example.com',
+    'taylor' => 'taylor@example.com',
+]);
+@endignissnippet
+
+## Pest 4 Features
+
+| Feature | Purpose |
+|---------|---------|
+| Browser Testing | Full integration tests in real browsers |
+| Smoke Testing | Validate multiple pages quickly |
+| Visual Regression | Compare screenshots for visual changes |
+| Test Sharding | Parallel CI runs |
+| Architecture Testing | Enforce code conventions |
+
+### Browser Test Example
+
+Browser tests run in real browsers for full integration testing when the project enables them:
+
+- Use fixtures and existing authentication helpers instead of ad hoc database setup.
+- Interact with the page: click, type, scroll, select, submit, drag-and-drop, touch gestures.
+- Take screenshots or pause tests for debugging when needed.
+
+@ignissnippet("Pest Browser Test Example", "php")
+it('may visit the home page', function () {
+    $page = visit('/');
+
+    $page->assertSee('Home')
+        ->assertNoJavaScriptErrors();
+});
+@endignissnippet
+
+### Smoke Testing
+
+Quickly validate multiple pages have no JavaScript errors:
+
+@ignissnippet("Pest Smoke Testing Example", "php")
+$pages = visit(['/', '/about', '/contact']);
+
+$pages->assertNoJavaScriptErrors()->assertNoConsoleLogs();
+@endignissnippet
+
+### Architecture Testing
+
+@ignissnippet("Architecture Test Example", "php")
+arch('controllers')
+    ->expect('App\\Controller')
+    ->toHaveSuffix('Controller');
+@endignissnippet
+
+## Common Pitfalls
+
+- Using generic status assertions when a specific assertion exists
+- Forgetting datasets for repetitive validation tests
+- Deleting tests without approval
+- Forgetting `assertNoJavaScriptErrors()` in browser tests when JS errors matter
+- Ignoring existing fixture/setup patterns used by sibling CakePHP tests

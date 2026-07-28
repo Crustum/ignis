@@ -1,0 +1,147 @@
+# Detection Checklist
+
+Every dimension here is a genuine fork: CakePHP offers two or more valid approaches, the app's choice changes what the next agent writes, and no tool can pick for you. Left out on purpose: pure formatting (PHPCS owns it), any form Rector/PHPStan rewrites to one canonical shape, and framework defaults any agent writes unprompted (Bake Table/Entity pairs, `fetchTable()`, PSR-12).
+
+Each item gives the fork, then a hint (a grep or dir to spot which side the app takes). Hints are only a start. Read the matched files, never record on a raw count. Apply the ground rules to every verdict: a consistent choice that is a default or a tool's target form is not a pattern. Rows tagged (architecture) are the highest-signal, so record presence and deliberate absence.
+
+---
+
+## A. Validation & HTTP input
+
+1. Validation entry point: Table `validationDefault()` / `validation*()` vs `src/Form` classes vs `$this->request->getData()` checks in controllers.
+   - Hint: `ls src/Form`; grep `validationDefault`, `->getData(` in controllers vs Tables.
+2. Custom rule location: Table/provider rules vs invokable validators vs inline closures.
+   - Hint: grep `add(` / `Provider` in Tables; look for dedicated validator classes.
+3. Typed / filtered retrieval: `$this->request->getQuery()` / `getData()` with casts vs raw array access.
+   - Hint: grep `getQuery(`, `getData(`, `getParam(` density in `src/Controller`.
+4. Custom messages/attributes: `resources/locales/*/validation.php` (or `resources/locales`) vs Form/`Validator` message maps.
+   - Hint: `ls resources/locales`; grep `->set*` message APIs in Forms/Tables.
+
+## B. Controllers & routing
+
+5. Controller shape: thin actions vs multi-method CRUD vs dedicated action classes.
+   - Hint: read a few controllers; count lines per action; `ls src/Controller`.
+6. Business-logic location (architecture): fat controllers vs delegated to Services / Tables / Commands / Jobs.
+   - Hint: read a few controller methods; `ls src/Service src/Services`.
+7. Route style: `config/routes.php` named routes vs array URLs vs plugin routes only.
+   - Hint: grep `_name`, `Router::url` vs array `['controller' =>` usage.
+8. Middleware assignment: `Application` / plugin middleware queue vs controller-level checks.
+   - Hint: grep `middleware(` in `Application.php` / plugins vs auth checks in controllers.
+9. Entity loading: `get()` / `getAssociation` / `contain` in controllers vs Table finder methods.
+   - Hint: grep `->get(`, `->find(`, `contain(` in controllers vs Tables.
+10. CSRF / form protection: framework defaults vs custom skips / token helpers.
+    - Hint: grep `CsrfProtection`, `FormProtection`, `unlockedFields`.
+
+## C. Authorization
+
+11. Authorization home: Authorization plugin Policy classes vs AuthComponent / custom gates vs middleware-only.
+    - Hint: `ls src/Policy`; grep `can*`, `Authorization` in `src/`.
+12. Authorization call site: `$this->Authorization->authorize()` / `can()` vs manual checks in controllers.
+    - Hint: grep `Authorization`, `->can(`, `authorize(` in controllers.
+
+## D. Tables, entities & ORM
+
+13. Mass assignment: entity `$_accessible` whitelist (`'*' => false`) vs open `'*' => true`.
+    - Hint: grep `$_accessible` in `src/Model/Entity`.
+14. Virtual / computed fields: `_getXxx` / `_setXxx` vs dedicated presenters / view vars only.
+    - Hint: grep `function _get`, `function _set`, `$_virtual` in entities.
+15. Primary keys: auto-increment integers vs UUIDs / ULIDs.
+    - Hint: grep `uuid`, `Uuid`, `BinaryUuid` in migrations and entities.
+16. Custom types / marshaling: custom `Type` classes vs inline casting in entities.
+    - Hint: `ls src/Database/Type`; grep `Type::map`, `$_cast` patterns.
+17. Data/query layer (architecture): Tables queried in controllers vs repositories vs rich Table finders.
+    - Hint: `ls src/Repository src/Query`; see where non-trivial queries are built.
+18. Finder methods: `findXxx` on Tables vs ad-hoc `where` chains in callers.
+    - Hint: grep `function find` in Tables; compare caller style.
+19. Model events / callbacks: Table `beforeSave`/`afterSave` vs listeners vs application events.
+    - Hint: grep `beforeSave`, `afterSave`, `EventManager` in `src/Model`.
+20. Contain / select posture: per-query `contain`/`select` vs default associations always loaded.
+    - Hint: grep `contain(`, `select(` density in Tables vs controllers.
+
+## E. Architecture & organization
+
+21. Service structure (architecture): Service classes (constructor-injected) vs fat Tables vs neither. Cross-check the Step 0 `src/` map.
+    - Hint: `ls src/` (whole tree); grep how Services are constructed/called.
+22. Forms / DTOs (architecture): `src/Form` vs plain arrays vs readonly DTO classes.
+    - Hint: `ls src/Form src/Dto src/Data`; grep `extends Form`.
+23. Dependency acquisition: constructor/action injection vs `FactoryLocator` / locator lookups.
+    - Hint: grep `FactoryLocator`, `getTableLocator`, `fetchTable(` vs promoted constructor deps.
+24. Decoupling: Events + listeners vs direct service/Table calls.
+    - Hint: `ls src/Event src/Listener`; grep `EventManager`, `dispatch(`.
+25. Configure / facade idiom: `Configure::read` vs injected config objects vs `env()` everywhere.
+    - Hint: ratio of `Configure::` vs `env(` across `src/`.
+26. Namespace layout (architecture): default `src/` skeleton vs domain/plugin folders.
+    - Hint: `ls src/ plugins/`; look for Domain/, Modules/, bounded-context folders.
+27. Enums: backed vs pure; case naming; where they live.
+    - Hint: `ls src/**/Enum*`; grep `enum .*: string`, `enum .*: int`.
+
+## F. Frontend & views
+
+{% if assist.hasPackage('zunnu/cake-htmx') or assist.hasPackage('friendsofcake/bootstrap-ui') %}
+This app ships a frontend UI stack package. The items below apply.
+{% else %}
+No HTMX/Bootstrap-UI package is installed. This app may be templates-or-API; confirm from `templates/` before sweeping, and treat HTMX/Bootstrap-UI dimensions as not applicable.
+{% endif %}
+
+28. Frontend stack: Cake templates + elements vs API + separate SPA vs HTMX partials.
+    - Hint: `composer.json` + `package.json`; `ls templates/`, front-end asset dirs.
+29. Template composition: elements vs cells vs View classes vs layouts-only.
+    - Hint: `ls templates/element src/View/Cell`; grep `$this->element(`, `$this->cell(`.
+{% if assist.hasPackage('zunnu/cake-htmx') %}
+30. HTMX: partial swaps vs full-page responses; where HTMX attributes live.
+    - Hint: grep `hx-`, `Htmx` in `templates/` and controllers.
+{% endif %}
+{% if assist.hasPackage('friendsofcake/bootstrap-ui') %}
+31. UI kit (Bootstrap UI): BootstrapUI helpers/widgets vs custom Form helpers vs another library.
+    - Hint: grep `BootstrapUI`, `Form->` patterns in templates.
+{% endif %}
+32. Localization: `__()` / `__d()` keys vs hard-coded strings in templates/controllers.
+    - Hint: `ls resources/locales`; grep `__('`, `__d(` density.
+
+## G. Database & migrations
+
+33. Foreign keys: `addForeignKey` / constrained columns vs application-only integrity.
+    - Hint: grep `foreignKey`, `addForeignKey` in `config/Migrations`.
+34. `down()` methods: real reverse logic vs omitted / one-way migrations.
+    - Hint: grep `function down` vs the migration count.
+35. Enum storage: DB enum/string columns vs PHP-backed enums on entities.
+    - Hint: grep enum-like columns in migrations vs `enum` in `src/`.
+36. Transactions: `Connection::transactional()` vs manual begin/commit/rollback.
+    - Hint: grep `transactional(`, `begin(`, `commit(` in `src/`.
+37. Idempotent writes: `updateOrCreate`-style finders vs find-then-save.
+    - Hint: grep `findOrCreate`, `updateAll`, save patterns in Tables/Services.
+
+## H. Testing
+
+38. Framework: Pest (`it()` / `test()` / `expect()`) vs PHPUnit classes.
+    - Hint: `ls tests/Pest.php`; grep `it(` / `test(` vs `extends TestCase`.
+39. DB reset: fixtures vs migrations-in-tests vs truncated schemas.
+    - Hint: grep `$fixtures`, `Fixture`, schema helpers in `tests/`.
+40. Fixtures: Cake fixtures vs factories vs manual inserts.
+    - Hint: grep `Factory`, `$this->getTableLocator`, fixture class names in `tests/`.
+41. Collaborator isolation: Mockery / Pest mocks vs real integration for app classes.
+    - Hint: grep `Mockery::`, `->mock(`, `->spy(` in `tests/`.
+42. Endpoint assertions: integration `get`/`post` + assertResponse* vs pure unit.
+    - Hint: grep `assertResponse`, `get(`, `post(` in feature/integration tests.
+
+## I. Responses & APIs
+
+43. Response shape: JsonView / serialized entities vs manual `withType('application/json')` bodies vs HTML-only.
+    - Hint: grep `JsonView`, `viewBuilder()->setClassName`, `withType(` in controllers.
+44. Pagination: `paginate()` vs manual limit/offset vs cursor helpers.
+    - Hint: grep `paginate(`, `setPaging` in controllers.
+45. Redirects/URLs: named routes vs array URLs vs string paths.
+    - Hint: grep `['_name'`, `Router::url`, `redirect([` in controllers and templates.
+
+## J. Strings, collections & dates
+
+46. Iteration idiom: Cake `Collection` / `collection()` pipelines vs `array_map` / `foreach`.
+    - Hint: grep `collection(`, `->map(` vs `array_map`, `foreach` density in `src/`.
+47. String API: Cake `Text` / `h()` vs native string funcs.
+    - Hint: grep `Text::`, `h(` vs native string funcs.
+48. Dates: FrozenTime / Chronos helpers vs `DateTimeImmutable` vs strings.
+    - Hint: grep `FrozenTime`, `DateTimeImmutable`, `Chronos` in `src/`.
+
+---
+
+Genuine forks only: every row survived the "no tool can decide this, and it isn't the default" filter. Give each applicable dimension exactly one verdict: pattern, conflict, default, no-signal, tooling-owned, or already-recorded. The architecture rows are where the highest-value rules come from.
