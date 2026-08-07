@@ -11,6 +11,8 @@ use Cake\Core\ContainerInterface;
 use Cake\Core\Plugin;
 use Cake\Core\PluginApplicationInterface;
 use Cake\Http\MiddlewareQueue;
+use Cake\Log\Engine\FileLog;
+use Cake\Log\Log;
 use Crustum\Ignis\Command\AddSkillCommand;
 use Crustum\Ignis\Command\ExecuteToolCommand;
 use Crustum\Ignis\Command\InspectorCommand;
@@ -96,6 +98,16 @@ class IgnisPlugin extends BasePlugin implements ManifestInterface
             } elseif (file_exists($this->getConfigPath() . 'ignis.php')) {
                 Configure::load('Crustum/Ignis.ignis', 'default', false);
             }
+        }
+
+        if (BrowserWatcher::isEnabled() && Log::getConfig('browser') === null) {
+            Log::setConfig('browser', [
+                'className' => FileLog::class,
+                'path' => LOGS,
+                'file' => 'browser',
+                'levels' => ['debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency'],
+                'scopes' => ['browser'],
+            ]);
         }
 
         if (IgnisRuntime::shouldRun()) {
