@@ -24,9 +24,9 @@ return [
 
         /**
          * Capture browser console messages so agents get frontend error context.
-         * Requires Ignis to be running (`enabled` + debug or `force_enable`).
+         * Requires Ignis to be running (`enabled` + debug or `force_enable`), disabled by default.
          */
-        'browser_logs_watcher' => env('IGNIS_BROWSER_LOGS_WATCHER', true),
+        'browser_logs_watcher' => env('IGNIS_BROWSER_LOGS_WATCHER', false),
 
         /**
          * Browser console levels to capture. Trim to `['error']` when

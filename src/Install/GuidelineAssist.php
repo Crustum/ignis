@@ -443,7 +443,7 @@ class GuidelineAssist
      */
     public function browserLogsWatcherEnabled(): bool
     {
-        return (bool)Configure::read('Ignis.browser_logs_watcher', true);
+        return (bool)Configure::read('Ignis.browser_logs_watcher', false);
     }
 
     /**
