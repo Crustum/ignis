@@ -23,7 +23,7 @@
         "crustum/inspector": "^1.0",
         "crustum/cakephp-skills": "dev-main",
         "crustum/plugin-manifest": "^1.1",
-        "crustum/prompts": "^1.0",
+        "crustum/prompts": "^1.0|^2.0",
         "laravel/prompts": "^0.3.21",
         "symfony/filesystem": "^7.2|^8.0",
         "symfony/finder": "^7.2|^8.0",
