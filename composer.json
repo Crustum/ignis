@@ -19,7 +19,7 @@
     "require": {
         "php": ">=8.2",
         "cakephp/cakephp": "^5.3",
-        "crustum/mcp": "dev-main",
+        "crustum/mcp": "^1.0",
         "crustum/inspector": "^1.0",
         "crustum/cakephp-skills": "dev-main",
         "crustum/plugin-manifest": "^1.1",
