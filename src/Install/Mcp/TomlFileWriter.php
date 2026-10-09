@@ -68,11 +68,14 @@ class TomlFileWriter
     {
         $this->ensureDirectoryExists();
 
-        if ($this->shouldWriteNew()) {
+        $rawContents = is_file($this->filePath) ? file_get_contents($this->filePath) : false;
+        $content = is_string($rawContents) ? $this->normalizeContent($rawContents) : '';
+
+        if ($content === '') {
             return $this->createNewFile();
         }
 
-        return $this->updateExistingFile();
+        return $this->updateExistingFile($content);
     }
 
     /**
@@ -104,13 +107,11 @@ class TomlFileWriter
     /**
      * Update an existing TOML configuration file.
      *
+     * @param string $content Normalized file contents
      * @return bool
      */
-    protected function updateExistingFile(): bool
+    protected function updateExistingFile(string $content): bool
     {
-        $contents = file_get_contents($this->filePath);
-        $content = is_string($contents) ? $contents : '';
-
         foreach ($this->serversToAdd as $key => $config) {
             if ($this->serverExists($content, $key)) {
                 $content = $this->removeExistingServer($content, $key);
@@ -233,17 +234,18 @@ class TomlFileWriter
     }
 
     /**
-     * Whether a new file should be written instead of updating an existing one.
+     * Normalize raw file contents for parsing (strip BOM, trim surrounding whitespace).
      *
-     * @return bool
+     * @param string $content Raw file contents
+     * @return string
      */
-    protected function shouldWriteNew(): bool
+    protected function normalizeContent(string $content): string
     {
-        if (!is_file($this->filePath)) {
-            return true;
+        if (str_starts_with($content, "\xEF\xBB\xBF")) {
+            $content = substr($content, 3);
         }
 
-        return filesize($this->filePath) < 3;
+        return trim($content);
     }
 
     /**

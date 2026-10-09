@@ -47,7 +47,7 @@ Cross-cutting changes often need more than one rule file.
 | `extract`, `combine`, map/filter, result set transforms | [`rules/collections.md`](rules/collections.md) |
 | Templates, elements, cells, helpers, escaping, view blocks | [`rules/views.md`](rules/views.md) |
 | Environment values, `Configure`, `Security.salt`, `debug` flags | [`rules/config.md`](rules/config.md) |
-| PHPUnit, fixtures, `IntegrationTestTrait`, CSRF tokens in tests | [`rules/testing.md`](rules/testing.md) |
+| Tests: coverage, fixtures, fakes, and assertions | the `testing-best-practices` skill |
 | Naming conventions, `Text`/`Inflector` helpers, file boundaries, PHP style | [`rules/style.md`](rules/style.md) |
 | Services, DI container, plugins, transactions, layer boundaries | [`rules/architecture.md`](rules/architecture.md) |
 

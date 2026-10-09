@@ -9,13 +9,13 @@ Each item gives the fork, then a hint (a grep or dir to spot which side the app 
 ## A. Validation & HTTP input
 
 1. Validation entry point: Table `validationDefault()` / `validation*()` vs `src/Form` classes vs `$this->request->getData()` checks in controllers.
-   - Hint: `ls src/Form`; grep `validationDefault`, `->getData(` in controllers vs Tables.
+   - Hint: `ls src/Form`; grep -- `validationDefault`, `->getData(` in controllers vs Tables.
 2. Custom rule location: Table/provider rules vs invokable validators vs inline closures.
    - Hint: grep `add(` / `Provider` in Tables; look for dedicated validator classes.
 3. Typed / filtered retrieval: `$this->request->getQuery()` / `getData()` with casts vs raw array access.
    - Hint: grep `getQuery(`, `getData(`, `getParam(` density in `src/Controller`.
 4. Custom messages/attributes: `resources/locales/*/validation.php` (or `resources/locales`) vs Form/`Validator` message maps.
-   - Hint: `ls resources/locales`; grep `->set*` message APIs in Forms/Tables.
+   - Hint: `ls resources/locales`; grep -- `->set*` message APIs in Forms/Tables.
 
 ## B. Controllers & routing
 
@@ -28,7 +28,7 @@ Each item gives the fork, then a hint (a grep or dir to spot which side the app 
 8. Middleware assignment: `Application` / plugin middleware queue vs controller-level checks.
    - Hint: grep `middleware(` in `Application.php` / plugins vs auth checks in controllers.
 9. Entity loading: `get()` / `getAssociation` / `contain` in controllers vs Table finder methods.
-   - Hint: grep `->get(`, `->find(`, `contain(` in controllers vs Tables.
+   - Hint: grep -- `->get(`, `->find(`, `contain(` in controllers vs Tables.
 10. CSRF / form protection: framework defaults vs custom skips / token helpers.
     - Hint: grep `CsrfProtection`, `FormProtection`, `unlockedFields`.
 
@@ -37,7 +37,7 @@ Each item gives the fork, then a hint (a grep or dir to spot which side the app 
 11. Authorization home: Authorization plugin Policy classes vs AuthComponent / custom gates vs middleware-only.
     - Hint: `ls src/Policy`; grep `can*`, `Authorization` in `src/`.
 12. Authorization call site: `$this->Authorization->authorize()` / `can()` vs manual checks in controllers.
-    - Hint: grep `Authorization`, `->can(`, `authorize(` in controllers.
+    - Hint: grep -- `Authorization`, `->can(`, `authorize(` in controllers.
 
 ## D. Tables, entities & ORM
 
@@ -120,7 +120,7 @@ No HTMX/Bootstrap-UI package is installed. This app may be templates-or-API; con
 40. Fixtures: Cake fixtures vs factories vs manual inserts.
     - Hint: grep `Factory`, `$this->getTableLocator`, fixture class names in `tests/`.
 41. Collaborator isolation: Mockery / Pest mocks vs real integration for app classes.
-    - Hint: grep `Mockery::`, `->mock(`, `->spy(` in `tests/`.
+    - Hint: grep -- `Mockery::`, `->mock(`, `->spy(` in `tests/`.
 42. Endpoint assertions: integration `get`/`post` + assertResponse* vs pure unit.
     - Hint: grep `assertResponse`, `get(`, `post(` in feature/integration tests.
 
@@ -136,7 +136,7 @@ No HTMX/Bootstrap-UI package is installed. This app may be templates-or-API; con
 ## J. Strings, collections & dates
 
 46. Iteration idiom: Cake `Collection` / `collection()` pipelines vs `array_map` / `foreach`.
-    - Hint: grep `collection(`, `->map(` vs `array_map`, `foreach` density in `src/`.
+    - Hint: grep -- `collection(`, `->map(` vs `array_map`, `foreach` density in `src/`.
 47. String API: Cake `Text` / `h()` vs native string funcs.
     - Hint: grep `Text::`, `h(` vs native string funcs.
 48. Dates: FrozenTime / Chronos helpers vs `DateTimeImmutable` vs strings.

@@ -9,6 +9,7 @@ use Crustum\Ignis\Mcp\Tools\DatabaseConnections;
 use Crustum\Mcp\Exception\JsonRpcException;
 use Crustum\Mcp\Response;
 use Crustum\Mcp\Transport\JsonRpcRequest;
+use JMac\Testing\Double;
 
 test('throws JsonRpcException when name parameter is missing', function (): void {
     $method = new CallToolWithExecutor(new ToolExecutor());
@@ -27,11 +28,10 @@ test('throws JsonRpcException when tool does not exist', function (): void {
 })->throws(JsonRpcException::class, 'Tool [non-existent-tool] not found.', -32602);
 
 test('successful tool execution returns proper response', function (): void {
-    $executor = Mockery::mock(ToolExecutor::class);
-    $executor->shouldReceive('execute')
-        ->once()
+    $executor = Double::for(ToolExecutor::class);
+    $executor->expects('execute')
         ->with(DatabaseConnections::class, [])
-        ->andReturn(Response::text('Success result'));
+        ->returns(Response::text('Success result'));
 
     $method = new CallToolWithExecutor($executor);
     $context = createMcpServerContext([DatabaseConnections::class]);
@@ -45,11 +45,10 @@ test('successful tool execution returns proper response', function (): void {
 });
 
 test('tool execution exceptions are caught and returned as error responses', function (): void {
-    $executor = Mockery::mock(ToolExecutor::class);
-    $executor->shouldReceive('execute')
-        ->once()
+    $executor = Double::for(ToolExecutor::class);
+    $executor->expects('execute')
         ->with(DatabaseConnections::class, [])
-        ->andThrow(new RuntimeException('Database connection failed'));
+        ->throws(new RuntimeException('Database connection failed'));
 
     $method = new CallToolWithExecutor($executor);
     $context = createMcpServerContext([DatabaseConnections::class]);
@@ -65,11 +64,10 @@ test('tool execution exceptions are caught and returned as error responses', fun
 test('arguments are properly passed to executor', function (): void {
     $expectedArgs = ['database' => 'default'];
 
-    $executor = Mockery::mock(ToolExecutor::class);
-    $executor->shouldReceive('execute')
-        ->once()
+    $executor = Double::for(ToolExecutor::class);
+    $executor->expects('execute')
         ->with(DatabaseConnections::class, $expectedArgs)
-        ->andReturn(Response::text('{"connections":["default"]}'));
+        ->returns(Response::text('{"connections":["default"]}'));
 
     $method = new CallToolWithExecutor($executor);
     $context = createMcpServerContext([DatabaseConnections::class]);

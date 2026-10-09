@@ -26,7 +26,7 @@ test('addServer method returns self for chaining', function (): void {
         ->configKey('servers')
         ->addServerConfig('test', [
             'command' => 'php',
-            'args' => 'artisan',
+            'args' => 'bin/cake.php',
             'env' => 'value',
         ]);
 
@@ -370,6 +370,306 @@ test('updates JSON5 file with only single-quoted strings', function (): void {
     expect($writtenContent)->toContain('"ignis"', "'existing'");
 });
 
+test('save writes servers when the existing file is whitespace only', function (): void {
+    $path = prepareMcpFile(true, "\n  \n");
+
+    $result = (new FileWriter($path))
+        ->addServerConfig('ignis', ['command' => 'php'])
+        ->save();
+
+    $writtenContent = mcpFileContents($path);
+
+    expect($result)->toBeTrue()
+        ->and($writtenContent)->toContain('"ignis"')
+        ->and($writtenContent)->toContain('php');
+});
+
+test('save updates a plain JSON file that starts with a UTF-8 BOM', function (): void {
+    $content = "\xEF\xBB\xBF" . json_encode(['mcpServers' => ['existing' => ['command' => 'existing-cmd']]]);
+    $path = prepareMcpFile(true, $content);
+
+    $result = (new FileWriter($path))
+        ->addServerConfig('ignis', ['command' => 'php'])
+        ->save();
+
+    $writtenContent = mcpFileContents($path);
+
+    expect($result)->toBeTrue()
+        ->and($writtenContent)->not->toStartWith("\xEF\xBB\xBF")
+        ->and($writtenContent)->toContain('"existing"')
+        ->and($writtenContent)->toContain('"ignis"');
+});
+
+test('save rejects plain JSON files without an object root', function (string $content): void {
+    $path = prepareMcpFile(true, $content);
+
+    $result = (new FileWriter($path))
+        ->addServerConfig('ignis', ['command' => 'php'])
+        ->save();
+
+    expect($result)->toBeFalse();
+    expect(mcpFileContents($path))->toBe($content);
+})->with([
+    'null' => 'null',
+    'boolean' => 'true',
+    'number' => '1',
+    'string' => '"config"',
+    'array' => '[]',
+]);
+
+test('save rejects JSON5 files without an object root', function (string $content): void {
+    $path = prepareMcpFile(true, $content);
+
+    $result = (new FileWriter($path))
+        ->addServerConfig('ignis', ['command' => 'php'])
+        ->save();
+
+    expect($result)->toBeFalse();
+    expect(mcpFileContents($path))->toBe($content);
+})->with([
+    'null' => 'null // comment',
+    'boolean' => 'true // comment',
+    'number' => '1 /* comment */',
+    'string' => "'config'",
+    'array' => '[{ unquoted: true, }]',
+]);
+
+test('adds the comma outside a trailing comment in the servers object', function (): void {
+    $contentWithTrailingComment = <<<'JSON5'
+    {
+      "mcpServers": {
+        "context7": {
+          "command": "npx"
+        } // docs lookup
+      }
+    }
+    JSON5;
+
+    $path = prepareMcpFile(true, $contentWithTrailingComment);
+
+    $result = (new FileWriter($path))
+        ->addServerConfig('ignis', [
+            'command' => 'php',
+            'args' => ['bin/cake.php', 'ignis', 'mcp'],
+        ])
+        ->save();
+
+    $writtenContent = mcpFileContents($path);
+    $withoutComments = preg_replace('/\/\/[^\n]*/', '', $writtenContent);
+
+    expect($result)->toBeTrue()
+        ->and(json_decode((string)$withoutComments, true))->not->toBeNull()
+        ->and($writtenContent)->toContain(
+            '"ignis"',
+            '"context7"',
+            '// docs lookup',
+        );
+});
+
+test('does not read a // inside a single-quoted string as a comment', function (): void {
+    $singleQuotedUrl = <<<'JSON5'
+    {
+      'mcpServers': {
+        'remote': { 'url': 'https://example.test/sse' }
+      }
+    }
+    JSON5;
+
+    $path = prepareMcpFile(true, $singleQuotedUrl);
+
+    $result = (new FileWriter($path))
+        ->addServerConfig('ignis', [
+            'command' => 'php',
+            'args' => ['bin/cake.php', 'ignis', 'mcp'],
+        ])
+        ->save();
+
+    $writtenContent = mcpFileContents($path);
+
+    expect($result)->toBeTrue()
+        ->and($writtenContent)->toContain(
+            "'url': 'https://example.test/sse'",
+            '"ignis"',
+        );
+});
+
+test('injects into an unquoted JSON5 config key', function (): void {
+    $unquotedJson5 = <<<'JSON5'
+    {
+      mcpServers: {
+        existing: {
+          command: 'node'
+        }
+      }
+    }
+    JSON5;
+
+    $path = prepareMcpFile(true, $unquotedJson5);
+
+    $result = (new FileWriter($path))
+        ->addServerConfig('ignis', [
+            'command' => 'php',
+            'args' => ['bin/cake.php', 'ignis', 'mcp'],
+        ])
+        ->save();
+
+    $writtenContent = mcpFileContents($path);
+
+    expect($result)->toBeTrue()
+        ->and($writtenContent)->toContain('"ignis"', 'existing')
+        ->and($writtenContent)->toContain("\n    \"ignis\"")
+        ->and(substr_count($writtenContent, 'mcpServers'))->toBe(1);
+});
+
+test('injects a server that is only present as a comment', function (): void {
+    $commentedOutJson5 = <<<'JSON5'
+    {
+        "mcpServers": {
+            // "ignis": { "command": "php", "args": ["bin/cake.php", "ignis", "mcp"] }
+        }
+    }
+    JSON5;
+
+    $path = prepareMcpFile(true, $commentedOutJson5);
+
+    $result = (new FileWriter($path))
+        ->addServerConfig('ignis', [
+            'command' => 'php',
+            'args' => ['bin/cake.php', 'ignis', 'mcp'],
+        ])
+        ->save();
+
+    expect($result)->toBeTrue();
+    expect(normalizeMcpLineEndings(mcpFileContents($path)))->toBe(normalizeMcpLineEndings(<<<'JSON5'
+    {
+        "mcpServers": {
+            "ignis": {
+                "command": "php",
+                "args": [
+                    "bin/cake.php",
+                    "ignis",
+                    "mcp"
+                ]
+            }
+            // "ignis": { "command": "php", "args": ["bin/cake.php", "ignis", "mcp"] }
+        }
+    }
+
+    JSON5));
+});
+
+test('injects a server that is only present as a block comment', function (): void {
+    $commentedOutJson5 = <<<'JSON5'
+    {
+        "mcpServers": {
+            /* "ignis": { "command": "php" } */
+        }
+    }
+    JSON5;
+
+    $path = prepareMcpFile(true, $commentedOutJson5);
+
+    $result = (new FileWriter($path))
+        ->addServerConfig('ignis', [
+            'command' => 'php',
+            'args' => ['bin/cake.php', 'ignis', 'mcp'],
+        ])
+        ->save();
+
+    expect($result)->toBeTrue();
+    expect(normalizeMcpLineEndings(mcpFileContents($path)))->toBe(normalizeMcpLineEndings(<<<'JSON5'
+    {
+        "mcpServers": {
+            "ignis": {
+                "command": "php",
+                "args": [
+                    "bin/cake.php",
+                    "ignis",
+                    "mcp"
+                ]
+            }
+            /* "ignis": { "command": "php" } */
+        }
+    }
+
+    JSON5));
+});
+
+test('injects into the real configKey when a commented-out copy of it comes first', function (): void {
+    $json5 = <<<'JSON5'
+    {
+        // "mcpServers": {
+        //     "ignis": { "command": "php" }
+        // }
+        "mcpServers": {
+            "other": { "command": "x" } // has a } brace
+        }
+    }
+    JSON5;
+
+    $path = prepareMcpFile(true, $json5);
+
+    $result = (new FileWriter($path))
+        ->addServerConfig('ignis', ['command' => 'php'])
+        ->save();
+
+    expect($result)->toBeTrue();
+    expect(normalizeMcpLineEndings(mcpFileContents($path)))->toBe(normalizeMcpLineEndings(<<<'JSON5'
+    {
+        // "mcpServers": {
+        //     "ignis": { "command": "php" }
+        // }
+        "mcpServers": {
+            "other": { "command": "x" }, // has a } brace
+            "ignis": {
+                "command": "php"
+            }
+        }
+    }
+
+    JSON5));
+});
+
+test('new file ends with a trailing newline', function (): void {
+    $path = prepareMcpFile(false);
+
+    $result = (new FileWriter($path))
+        ->addServerConfig('ignis', [
+            'command' => 'php',
+            'args' => ['bin/cake.php', 'ignis', 'mcp'],
+        ])
+        ->save();
+
+    expect($result)->toBeTrue();
+    expect(mcpFileContents($path))->toEndWith("\n");
+});
+
+test('updated plain JSON file ends with a trailing newline', function (): void {
+    $path = prepareMcpFile(true, fixtureContent('mcp-with-servers.json'));
+
+    $result = (new FileWriter($path))
+        ->addServerConfig('ignis', ['command' => 'php'])
+        ->save();
+
+    expect($result)->toBeTrue();
+    expect(mcpFileContents($path))->toEndWith("\n");
+});
+
+test('updated JSON5 file ends with a single trailing newline', function (): void {
+    $path = prepareMcpFile(true, fixtureContent('mcp.json5'));
+
+    $result = (new FileWriter($path))
+        ->configKey('servers')
+        ->addServerConfig('test', ['command' => 'cmd'])
+        ->save();
+
+    $writtenContent = mcpFileContents($path);
+
+    expect($result)->toBeTrue();
+    expect($writtenContent)->toEndWith("\n");
+    expect($writtenContent)->not->toEndWith("\n\n");
+});
+
 test('detectIndentation works correctly with various patterns', function (string $content, int $position, int $expected, string $description): void {
     $writer = new FileWriter('/tmp/test.json');
 
@@ -586,5 +886,22 @@ function indentationDetectionCases(): array
             8,
             'Should fallback to 8 spaces for empty content',
         ],
+        'empty configKey object' => [
+            "{\n  \"mcpServers\": {\n  }\n}",
+            25,
+            4,
+            'Should indent one level deeper than the configKey line when it has no servers',
+        ],
     ];
+}
+
+/**
+ * Normalize line endings for exact-output assertions (test files use CRLF).
+ *
+ * @param string $content Content with mixed line endings
+ * @return string
+ */
+function normalizeMcpLineEndings(string $content): string
+{
+    return str_replace("\r\n", "\n", $content);
 }

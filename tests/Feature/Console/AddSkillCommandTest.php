@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
+use Cake\Console\ConsoleIo;
 use Cake\Core\Configure;
+use Crustum\Ignis\Command\AddSkillCommand;
+use Crustum\Ignis\Skills\Remote\GitHubRepository;
 
 beforeEach(function (): void {
     prepareAddSkillTestProject();
@@ -126,6 +129,58 @@ YAML;
     $this->assertExitSuccess();
     assertSkillFileContains(['# New Content'], '.ai/skills/skill-one/SKILL.md');
     assertSkillFileNotContains(['existing content'], '.ai/skills/skill-one/SKILL.md');
+});
+
+it('preserves an existing skill when a forced download fails', function (): void {
+    writeSkillFile('.ai/skills/skill-one/SKILL.md', 'existing content');
+
+    bindAddSkillMocks($this, 'owner/repo', [
+        ...githubDiscoverResponses([
+            ['path' => 'skill-one', 'type' => 'tree', 'sha' => 'def'],
+            ['path' => 'skill-one/SKILL.md', 'type' => 'blob', 'sha' => 'ghi', 'size' => 123],
+        ]),
+        githubJsonResponse(500, []),
+    ]);
+
+    $this->exec('ignis add-skill owner/repo --all --force --no-interaction');
+
+    $this->assertExitSuccess();
+    $this->assertErrorContains('Some skills failed to install');
+    assertSkillFileContains(['existing content'], '.ai/skills/skill-one/SKILL.md');
+});
+
+it('keeps the existing skill and the download when the install move fails', function (): void {
+    writeSkillFile('.ai/skills/skill-one/SKILL.md', 'existing content');
+
+    $repository = GitHubRepository::fromInput('owner/repo');
+    $provider = githubProvider($repository, [
+        ...githubDiscoverResponses([
+            ['path' => 'skill-one', 'type' => 'tree', 'sha' => 'def'],
+            ['path' => 'skill-one/SKILL.md', 'type' => 'blob', 'sha' => 'ghi', 'size' => 123],
+        ]),
+        githubRawFileResponse(skillOneYaml()),
+    ]);
+    $auditor = skillAuditorWithResponses([githubJsonResponse(200, [])]);
+
+    $command = new class (null, $provider, $auditor) extends AddSkillCommand {
+        protected function runIgnisUpdate(ConsoleIo $io): void
+        {
+        }
+
+        protected function moveDirectory(string $from, string $to): bool
+        {
+            return false;
+        }
+    };
+
+    $this->mockService(AddSkillCommand::class, static fn (): AddSkillCommand => $command);
+
+    $this->exec('ignis add-skill owner/repo --all --force --no-interaction');
+
+    $this->assertExitSuccess();
+    $this->assertErrorContains('Some skills failed to install');
+    assertSkillFileContains(['existing content'], '.ai/skills/skill-one/SKILL.md');
+    expect(glob(base_path('.ai/skills/.skill-one-*'), GLOB_ONLYDIR))->toHaveCount(1);
 });
 
 it('installs nested skill files correctly', function (): void {

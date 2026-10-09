@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 use Crustum\Ignis\Install\GuidelineAssist;
 use Crustum\Ignis\Trait\RendersTwigGuidelinesTrait;
+use JMac\Testing\Double;
 
 beforeEach(function (): void {
-    $assist = Mockery::mock(GuidelineAssist::class);
+    $assist = Double::for(GuidelineAssist::class);
 
     $this->renderer = new class ($assist) {
         use RendersTwigGuidelinesTrait;
@@ -42,10 +43,6 @@ beforeEach(function (): void {
     };
 });
 
-afterEach(function (): void {
-    Mockery::close();
-});
-
 test('ignissnippet directive extracts name and content into fenced code block', function (): void {
     $content = "@ignissnippet('Authentication Example')return Auth::user();@endignissnippet";
 
@@ -71,13 +68,13 @@ test('ignissnippet supports double quotes for name parameter', function (): void
 });
 
 test('ignissnippet uses specified language in fenced code block', function (): void {
-    $content = "@ignissnippet('PHP Example', 'php')\$user = User::find(1);@endignissnippet";
+    $content = "@ignissnippet('PHP Example', 'php')\$article = \$this->Articles->get(1);@endignissnippet";
 
     $this->renderer->processSnippets($content);
 
     expect($this->renderer->getStoredSnippets()['___IGNIS_SNIPPET_0___'])
         ->toContain('```php')
-        ->toContain('$user = User::find(1);');
+        ->toContain('$article = $this->Articles->get(1);');
 });
 
 test('multiple ignissnippets are replaced with sequential placeholders', function (): void {
@@ -100,12 +97,12 @@ test('escaped ignissnippet directive is not processed', function (): void {
 });
 
 test('ignissnippet preserves multiline content', function (): void {
-    $content = "@ignissnippet('Multiline')\$user = User::find(1);\n\$user->name = 'John';\n\$user->save();@endignissnippet";
+    $content = "@ignissnippet('Multiline')\$article = \$this->Articles->get(1);\n\$article->title = 'Cake';\n\$this->Articles->save(\$article);@endignissnippet";
 
     $this->renderer->processSnippets($content);
 
     expect($this->renderer->getStoredSnippets()['___IGNIS_SNIPPET_0___'])
-        ->toContain("\$user = User::find(1);\n\$user->name = 'John';\n\$user->save();");
+        ->toContain("\$article = \$this->Articles->get(1);\n\$article->title = 'Cake';\n\$this->Articles->save(\$article);");
 });
 
 test('non-twig files bypass twig rendering entirely', function (): void {
@@ -134,11 +131,11 @@ test('php opening tags are preserved through twig rendering for code examples', 
 });
 
 test('html entities from twig expressions are decoded back to plain text for markdown output', function (): void {
-    $content = 'Run {{ "tinker --execute \"your code here\"" }}';
+    $content = 'Run {{ "\"bin/cake console\"" }}';
 
     $result = $this->renderer->render($content, '/path/to/guide.twig');
 
-    expect($result)->toContain('tinker --execute "your code here"')
+    expect($result)->toContain('Run "bin/cake console"')
         ->not->toContain('&quot;');
 });
 
@@ -153,6 +150,53 @@ test('all common html entities are decoded', function (): void {
         ->not->toContain('&gt;');
 });
 
+test('html entities written literally inside fenced code blocks are preserved', function (): void {
+    $content = "```php\n\$this->assertStringContainsString('&lt;script&gt;', \$content);\n```";
+
+    $result = $this->renderer->render($content, '/path/to/guide.twig');
+
+    expect($result)->toBe($content);
+});
+
+test('twig expressions inside fenced code blocks are rendered', function (): void {
+    $content = <<<'TWIG'
+    ```bash
+    bin/cake console {{ '"--verbose"' }}
+    ```
+    TWIG;
+
+    $result = $this->renderer->render($content, '/path/to/guide.twig');
+
+    expect($result)->toContain('bin/cake console "--verbose"')
+        ->not->toContain('&quot;');
+});
+
+test('renderTwigFile preserves literal entities while decoding twig output', function (): void {
+    $tempFile = sys_get_temp_dir() . '/ignis_test_' . uniqid() . '.twig';
+    file_put_contents($tempFile, <<<'TWIG'
+    ```php
+    $this->assertStringContainsString('&lt;script&gt;', $content);
+    ```
+
+    Run {{ 'bin/cake console' }} to inspect data.
+
+    ```bash
+    {{ '"$total = $this->Articles->find()->count();"' }}
+    ```
+    TWIG);
+
+    try {
+        $result = $this->renderer->renderFile($tempFile);
+
+        expect($result)
+            ->toContain("assertStringContainsString('&lt;script&gt;', \$content)")
+            ->toContain('Run bin/cake console to inspect data.')
+            ->toContain('$total = $this->Articles->find()->count();');
+    } finally {
+        @unlink($tempFile);
+    }
+});
+
 test('renderTwigFile returns empty string for non-existent file', function (): void {
     $result = $this->renderer->renderFile('/non/existent/guideline.twig');
 
@@ -161,7 +205,7 @@ test('renderTwigFile returns empty string for non-existent file', function (): v
 
 test('renderTwigFile processes snippets and renders twig in single pipeline', function (): void {
     $tempFile = sys_get_temp_dir() . '/ignis_test_' . uniqid() . '.twig';
-    file_put_contents($tempFile, "@ignissnippet('Query', 'php')User::all()@endignissnippet\n\nVersion: {{ \"1.0\" }}");
+    file_put_contents($tempFile, "@ignissnippet('Query', 'php')\$this->Articles->find()->all()@endignissnippet\n\nVersion: {{ \"1.0\" }}");
 
     try {
         $result = $this->renderer->renderFile($tempFile);
@@ -169,7 +213,7 @@ test('renderTwigFile processes snippets and renders twig in single pipeline', fu
         expect($result)
             ->toContain('<!-- Query -->')
             ->toContain('```php')
-            ->toContain('User::all()')
+            ->toContain('$this->Articles->find()->all()')
             ->toContain('```')
             ->toContain('Version: 1.0');
     } finally {

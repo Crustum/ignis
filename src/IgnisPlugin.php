@@ -6,7 +6,6 @@ namespace Crustum\Ignis;
 use Cake\Console\CommandCollection;
 use Cake\Core\BasePlugin;
 use Cake\Core\Configure;
-use Cake\Core\ContainerApplicationInterface;
 use Cake\Core\ContainerInterface;
 use Cake\Core\Plugin;
 use Cake\Core\PluginApplicationInterface;
@@ -18,6 +17,7 @@ use Crustum\Ignis\Command\ExecuteToolCommand;
 use Crustum\Ignis\Command\InspectorCommand;
 use Crustum\Ignis\Command\InstallCommand;
 use Crustum\Ignis\Command\ListSkillCommand;
+use Crustum\Ignis\Command\RulesIndexCommand;
 use Crustum\Ignis\Command\StartCommand;
 use Crustum\Ignis\Command\Themes\MultiSelectPromptRenderer;
 use Crustum\Ignis\Command\UpdateCommand;
@@ -100,26 +100,18 @@ class IgnisPlugin extends BasePlugin implements ManifestInterface
             }
         }
 
-        if (BrowserWatcher::isEnabled() && Log::getConfig('browser') === null) {
-            Log::setConfig('browser', [
-                'className' => FileLog::class,
-                'path' => LOGS,
-                'file' => 'browser',
-                'levels' => ['debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency'],
-                'scopes' => ['browser'],
-            ]);
-        }
-
         if (IgnisRuntime::shouldRun()) {
             Registrar::getInstance()->local('cake-ignis', McpIgnis::class);
         }
 
-        if ($app instanceof ContainerApplicationInterface) {
-            $container = $app->getContainer();
+        $this->registerBrowserLogChannel();
+
+        $app->getEventManager()->on('Application.buildContainer', function ($event): void {
+            $container = $event->getData('container');
             IgnisServiceProvider::registerMcpRuntimeServices($container);
             IgnisServiceProvider::registerMcpTools($container);
             ContainerRegistry::setInstance($container);
-        }
+        });
     }
 
     /**
@@ -135,6 +127,29 @@ class IgnisPlugin extends BasePlugin implements ManifestInterface
         }
 
         $this->registerCompatiblePromptTheme();
+    }
+
+    /**
+     * Register the browser log channel used by the browser logs MCP tool.
+     *
+     * Only when the watcher is active and no browser channel exists yet, so a
+     * host application may keep its own browser channel configuration.
+     *
+     * @return void
+     */
+    protected function registerBrowserLogChannel(): void
+    {
+        if (!BrowserWatcher::isEnabled() || Log::getConfig('browser') !== null) {
+            return;
+        }
+
+        Log::setConfig('browser', [
+            'className' => FileLog::class,
+            'path' => LOGS,
+            'file' => 'browser',
+            'levels' => ['debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency'],
+            'scopes' => ['browser'],
+        ]);
     }
 
     /**
@@ -196,6 +211,7 @@ class IgnisPlugin extends BasePlugin implements ManifestInterface
             'ignis execute-tool' => ExecuteToolCommand::class,
             'ignis add-skill' => AddSkillCommand::class,
             'ignis list-skills' => ListSkillCommand::class,
+            'ignis index-rules' => RulesIndexCommand::class,
         ]);
     }
 

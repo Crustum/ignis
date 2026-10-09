@@ -85,24 +85,6 @@ class IgnisPluginTestApp implements PluginApplicationInterface, ContainerApplica
 }
 
 /**
- * Mirror plugin `config/bootstrap.php` browser log channel setup.
- *
- * @return void
- */
-function configureIgnisBrowserLogChannel(): void
-{
-    if (BrowserWatcher::isEnabled() && Log::getConfig('browser') === null) {
-        Log::setConfig('browser', [
-            'className' => FileLog::class,
-            'path' => LOGS,
-            'file' => 'browser',
-            'levels' => ['debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency'],
-            'scopes' => ['browser'],
-        ]);
-    }
-}
-
-/**
  * Boot Ignis plugin services the way a host app would after Configure is set.
  *
  * @return array{0: \Crustum\Ignis\IgnisPlugin, 1: \Cake\Core\Container}
@@ -119,7 +101,6 @@ function bootIgnisPlugin(): array
 
     $plugin->bootstrap($app);
     $plugin->services($container);
-    configureIgnisBrowserLogChannel();
 
     return [$plugin, $container];
 }

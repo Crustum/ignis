@@ -435,3 +435,19 @@ it('treats a file with only whitespace as a new file', function (): void {
         ->and($capturedContent)->toContain('[mcp_servers.it]')
         ->and($capturedContent)->toContain('command = "php"');
 });
+
+it('updates a file that starts with a UTF-8 BOM without duplicating the server table', function (): void {
+    $path = prepareMcpFile(true, "\xEF\xBB\xBF[mcp_servers.cake-ignis]\ncommand = \"php\"\n", '.toml');
+
+    $result = (new TomlFileWriter($path))
+        ->configKey('mcp_servers')
+        ->addServerConfig('cake-ignis', ['command' => 'php', 'args' => ['bin/cake.php', 'ignis', 'mcp']])
+        ->save();
+
+    $capturedContent = mcpFileContents($path);
+
+    expect($result)->toBeTrue()
+        ->and($capturedContent)->not->toStartWith("\xEF\xBB\xBF")
+        ->and(substr_count($capturedContent, '[mcp_servers.cake-ignis]'))->toBe(1)
+        ->and($capturedContent)->toContain('args = ["bin/cake.php", "ignis", "mcp"]');
+});

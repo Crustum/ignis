@@ -139,7 +139,7 @@ $query = $articles->find()
 
 ## Sometimes Two Simple Queries Beat One Complex Query
 
-A small selective query whose IDs feed a second condition can be clearer and faster than a deeply nested join — when join/`matching()` options become hard to reason about. Measure before optimizing.
+A small selective query whose IDs feed a second condition can be clearer and faster than a deeply nested join — when join/`matching()` options become hard to reason about. They also add a round trip, can transfer a large identifier list, and do not provide a single-query consistency snapshot. Prefer the `IN`-subquery form above when the ID set is large, and decide from query plans and production-like measurements.
 
 ```php
 $tagIds = $tagsTable->find()

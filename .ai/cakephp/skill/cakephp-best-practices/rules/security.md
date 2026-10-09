@@ -32,6 +32,8 @@ class Article extends Entity
 
 Hide secrets from JSON/array exports with `$_hidden` (for example `password`).
 
+Mass assignment controls which attributes patching may set; it does not validate values or authorize the operation.
+
 ## Prevent SQL Injection
 
 Use array conditions / query expressions. Never interpolate request data into SQL strings or `epilog()`.
@@ -44,6 +46,16 @@ $query->where("name = '{$this->getRequest()->getQuery('name')}'");
 Correct:
 ```php
 $query->where(['Users.name' => $this->getRequest()->getQuery('name')]);
+```
+
+Bindings protect values, not identifiers such as column names or sort directions. Map user-selected identifiers to an allow-list before they reach the query:
+
+```php
+$allowed = ['created', 'title'];
+$sort = $this->getRequest()->getQuery('sort', 'created');
+$sort = in_array($sort, $allowed, true) ? $sort : 'created';
+$direction = strtolower((string)$this->getRequest()->getQuery('dir', 'desc')) === 'asc' ? 'ASC' : 'DESC';
+$query->orderBy(["Articles.$sort" => $direction]);
 ```
 
 ## Escape Output to Prevent XSS
@@ -94,8 +106,11 @@ public function initialize(): void
 $this->FormProtection->unlockFields(['optional_field', 'ajax_field']);
 ```
 
-## Enforce HTTPS in Production
+## Authorize Permission-Dependent Actions
 
+Check authorization for actions that depend on the current user's permissions, using the application's authorization layer (policies, identity checks). Authentication alone does not establish permission, and validation is not authorization. Public actions intentionally available to everyone do not need a redundant authorization check.
+
+## Enforce HTTPS in Production
 ```php
 use Cake\Http\Middleware\HttpsEnforcerMiddleware;
 

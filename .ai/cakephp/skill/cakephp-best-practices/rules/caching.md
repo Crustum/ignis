@@ -34,6 +34,8 @@ $val = Cache::remember('stats', function () {
 }, 'short');
 ```
 
+Compare against `null`, not truthiness — a loose `if (!$val)` mistreats valid falsy values such as `false` or `0` as misses. `remember()` also does not prevent concurrent requests from computing the same missing value; use a lock when duplicate computation must be prevented.
+
 ## Configure Engines Explicitly
 
 Define durations and engines in `Cache::setConfig()` (often from `config/app.php`) so code chooses a named config instead of inventing TTLs ad hoc.

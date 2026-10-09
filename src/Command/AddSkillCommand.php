@@ -142,7 +142,7 @@ class AddSkillCommand extends Command
         }
 
         if ($this->availableSkills->isEmpty()) {
-            $io->error('No valid skills are found in the repository.');
+            $io->error('No valid skills are found in the repository. Each skill must live in its own directory containing a SKILL.md or SKILL.twig — a SKILL.md at the repository root is not a skill. SKILL.blade.php is not supported.');
 
             return false;
         }
@@ -286,7 +286,14 @@ class AddSkillCommand extends Command
 
         if ($results['failedDetails'] !== []) {
             $io->error('Some skills failed to install:');
-            $this->displayGrid($io, array_keys($results['failedDetails']));
+
+            $rows = [];
+
+            foreach ($results['failedDetails'] as $name => $reason) {
+                $rows[] = [$name, $reason];
+            }
+
+            $this->displayTable($io, ['Skill', 'Reason'], $rows);
         }
 
         return static::CODE_SUCCESS;
@@ -412,19 +419,26 @@ class AddSkillCommand extends Command
 
         foreach ($skills as $skill) {
             $targetPath = $this->skillTargetPath($skill);
-
-            if ($this->skillExists($skill)) {
-                $this->deleteDirectory($targetPath);
-            }
+            $temporaryPath = dirname($targetPath) . DS . '.' . $skill->name . '-' . bin2hex(random_bytes(4));
 
             try {
-                if ($this->fetcher->downloadSkill($skill, $targetPath)) {
-                    $results['installedNames'][] = $skill->name;
-                } else {
+                if (!$this->fetcher->downloadSkill($skill, $temporaryPath)) {
                     $results['failedDetails'][$skill->name] = 'Download failed';
+                    $this->deleteDirectory($temporaryPath);
+
+                    continue;
                 }
+
+                if (!$this->moveDirectory($temporaryPath, $targetPath)) {
+                    $results['failedDetails'][$skill->name] = "Install failed, download kept at {$temporaryPath}";
+
+                    continue;
+                }
+
+                $results['installedNames'][] = $skill->name;
             } catch (RuntimeException $exception) {
                 $results['failedDetails'][$skill->name] = $exception->getMessage();
+                $this->deleteDirectory($temporaryPath);
             }
         }
 
@@ -465,10 +479,7 @@ class AddSkillCommand extends Command
 
         $auditResults = $this->promptSpin(
             $io,
-            fn(): array => $auditor->audit(
-                $this->repository->source(),
-                $skillNames,
-            ),
+            fn(): array => $this->auditSkills($selectedSkills),
             'Running security audit...',
         );
 
@@ -483,6 +494,42 @@ class AddSkillCommand extends Command
         }
 
         return $this->promptConfirm($io, 'Do you want to install these skills?');
+    }
+
+    /**
+     * Audit selected skills grouped by their repository parent directory.
+     *
+     * The audit service resolves a skill as source + '/' + name, so each skill
+     * has to be sent under its own parent directory.
+     *
+     * @param \Cake\Collection\Collection<string, \Crustum\Ignis\Skills\Remote\RemoteSkill> $skills Selected skills
+     * @return array<string, array<int, \Crustum\Ignis\Skills\Remote\AuditResult>>
+     */
+    protected function auditSkills(Collection $skills): array
+    {
+        $auditor = $this->skillAuditor ?? new SkillAuditor();
+        $results = [];
+
+        foreach ($skills->groupBy($this->skillParent(...)) as $parent => $group) {
+            $source = $this->repository->fullName() . ($parent === '' ? '' : '/' . $parent);
+            $names = (new Collection($group))->map(fn(RemoteSkill $skill): string => $skill->name)->toList();
+            $results = [...$results, ...$auditor->audit($source, $names)];
+        }
+
+        return $results;
+    }
+
+    /**
+     * Resolve a skill's repository parent directory.
+     *
+     * @param \Crustum\Ignis\Skills\Remote\RemoteSkill $skill Remote skill
+     * @return string
+     */
+    protected function skillParent(RemoteSkill $skill): string
+    {
+        $path = $skill->path;
+
+        return str_contains($path, '/') ? substr($path, 0, (int)strrpos($path, '/')) : '';
     }
 
     /**
@@ -585,6 +632,22 @@ class AddSkillCommand extends Command
     protected function showOutro(ConsoleIo $io): void
     {
         $this->displayOutro($io, 'Enjoy the ignis');
+    }
+
+    /**
+     * Move a downloaded skill into place, replacing any existing skill.
+     *
+     * @param string $from Temporary download directory
+     * @param string $to Skill target directory
+     * @return bool Whether the move succeeded
+     */
+    protected function moveDirectory(string $from, string $to): bool
+    {
+        if (is_dir($to)) {
+            $this->deleteDirectory($to);
+        }
+
+        return rename($from, $to);
     }
 
     /**

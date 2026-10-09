@@ -9,18 +9,19 @@ use Crustum\Inspector\Ecosystems\Ecosystem;
 use Crustum\Inspector\Ecosystems\JsEcosystem;
 use Crustum\Inspector\PackageCollection;
 use Crustum\Inspector\ProjectManager;
+use JMac\Testing\Double;
 
 beforeEach(function (): void {
-    $this->project = Mockery::mock(ProjectManager::class);
-    $this->php = Mockery::mock(Ecosystem::class);
-    $this->js = Mockery::mock(JsEcosystem::class);
-    $this->project->shouldReceive('php')->andReturn($this->php)->byDefault();
-    $this->project->shouldReceive('js')->andReturn($this->js)->byDefault();
-    $this->js->shouldReceive('packageManager')->andReturn(null)->byDefault();
-    $this->js->shouldReceive('packages')->andReturn(new PackageCollection([]))->byDefault();
-    $this->php->shouldReceive('packages')->andReturn(new PackageCollection([]))->byDefault();
-    $this->php->shouldReceive('uses')->andReturn(false)->byDefault();
-    $this->js->shouldReceive('uses')->andReturn(false)->byDefault();
+    $this->project = Double::for(ProjectManager::class, override: true);
+    $this->php = Double::for(Ecosystem::class);
+    $this->js = Double::for(JsEcosystem::class);
+    $this->project->allows('php')->returns($this->php);
+    $this->project->allows('js')->returns($this->js);
+    $this->js->allows('packageManager')->returns(null);
+    $this->js->allows('packages')->returns(new PackageCollection([]));
+    $this->php->allows('packages')->returns(new PackageCollection([]));
+    $this->php->allows('uses')->returns(false);
+    $this->js->allows('uses')->returns(false);
 
     $this->config = new GuidelineConfig;
 });
@@ -30,9 +31,8 @@ afterEach(function (): void {
 });
 
 test('php executable falls back to php bin/cake.php when no config is set', function (): void {
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->cake())->toBe('php bin/cake.php');
 });
@@ -40,25 +40,22 @@ test('php executable falls back to php bin/cake.php when no config is set', func
 test('php executable config takes precedence over default cake command', function (): void {
     Configure::write('Ignis.executable_paths.php', '/usr/local/bin/php8.3');
 
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->cake())->toBe('/usr/local/bin/php8.3 bin/cake.php');
 });
 
 test('cakeCommand builds a cake console command string', function (): void {
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->cakeCommand('cache clear'))->toBe('php bin/cake.php cache clear');
 });
 
 test('composer executable falls back to composer when no config is set', function (): void {
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->composerCommand('install'))->toBe('composer install');
 });
@@ -66,17 +63,15 @@ test('composer executable falls back to composer when no config is set', functio
 test('composer executable config takes precedence over default', function (): void {
     Configure::write('Ignis.executable_paths.composer', '/usr/local/bin/composer2');
 
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->composerCommand('install'))->toBe('/usr/local/bin/composer2 install');
 });
 
 test('npm executable falls back to npm when no config is set', function (): void {
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->nodePackageManagerCommand('install'))->toBe('npm install');
 });
@@ -84,17 +79,15 @@ test('npm executable falls back to npm when no config is set', function (): void
 test('npm executable config takes precedence over default', function (): void {
     Configure::write('Ignis.executable_paths.npm', '/usr/local/bin/yarn');
 
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->nodePackageManagerCommand('install'))->toBe('/usr/local/bin/yarn install');
 });
 
 test('vendor bin prefix falls back to vendor/bin when no config is set', function (): void {
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->binCommand('pint'))->toBe('vendor/bin/pint');
 });
@@ -102,9 +95,8 @@ test('vendor bin prefix falls back to vendor/bin when no config is set', functio
 test('vendor bin prefix config takes precedence over default', function (): void {
     Configure::write('Ignis.executable_paths.vendor_bin', '/custom/path/');
 
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->binCommand('pint'))->toBe('/custom/path/pint');
 });
@@ -123,7 +115,7 @@ test('hasSkills property can be set to true', function (): void {
 });
 
 test('enumContents returns empty string when discovered paths are not files', function (): void {
-    $assist = new class($this->project, $this->config) extends GuidelineAssist
+    $assist = new class($this->project->instance(), $this->config) extends GuidelineAssist
     {
         protected function discover(): array
         {
@@ -137,7 +129,7 @@ test('enumContents returns empty string when discovered paths are not files', fu
 });
 
 test('enumContents includes all discovered enum files in stable order', function (): void {
-    $assist = new class($this->project, $this->config) extends GuidelineAssist
+    $assist = new class($this->project->instance(), $this->config) extends GuidelineAssist
     {
         protected function discover(): array
         {
@@ -158,7 +150,7 @@ test('enumContents includes all discovered enum files in stable order', function
 });
 
 test('enumContents skips enum paths that are not files', function (): void {
-    $assist = new class($this->project, $this->config) extends GuidelineAssist
+    $assist = new class($this->project->instance(), $this->config) extends GuidelineAssist
     {
         protected function discover(): array
         {
@@ -177,9 +169,8 @@ test('enumContents skips enum paths that are not files', function (): void {
 test('hasSkillsEnabled returns false when skills are disabled', function (): void {
     $this->config->hasSkills = false;
 
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->hasSkillsEnabled())->toBeFalse();
 });
@@ -187,9 +178,8 @@ test('hasSkillsEnabled returns false when skills are disabled', function (): voi
 test('hasSkillsEnabled returns true when skills are enabled', function (): void {
     $this->config->hasSkills = true;
 
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->hasSkillsEnabled())->toBeTrue();
 });
@@ -197,9 +187,8 @@ test('hasSkillsEnabled returns true when skills are enabled', function (): void 
 test('hasMcpEnabled returns false when MCP is disabled', function (): void {
     $this->config->hasMcp = false;
 
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->hasMcpEnabled())->toBeFalse();
 });
@@ -207,102 +196,92 @@ test('hasMcpEnabled returns false when MCP is disabled', function (): void {
 test('hasMcpEnabled returns true when MCP is enabled', function (): void {
     $this->config->hasMcp = true;
 
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->hasMcpEnabled())->toBeTrue();
 });
 
 test('appPath returns default src path', function (): void {
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->appPath())->toBe('src');
     expect($assist->appPath('path/to/file.php'))->toBe('src/path/to/file.php');
 });
 
 test('appPath normalizes separators to forward slashes', function (): void {
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->appPath('Http/Kernel.php'))->toBe('src/Http/Kernel.php');
     expect($assist->appPath('Console/Commands/'))->toBe('src/Console/Commands/');
 });
 
 test('versionGte checks php ecosystem with >= constraint', function (): void {
-    $this->php->shouldReceive('uses')->once()->with('cakephp/cakephp', '>=5.4')->andReturn(true);
+    $this->php->expects('uses')->with('cakephp/cakephp', '>=5.4')->returns(true);
 
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->versionGte('cakephp/cakephp', '5.4'))->toBeTrue();
 });
 
 test('versionGte falls back to js ecosystem', function (): void {
-    $this->php->shouldReceive('uses')->once()->with('vue', '>=3.4')->andReturn(false);
-    $this->js->shouldReceive('uses')->once()->with('vue', '>=3.4')->andReturn(true);
+    $this->php->expects('uses')->with('vue', '>=3.4')->returns(false);
+    $this->js->expects('uses')->with('vue', '>=3.4')->returns(true);
 
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->versionGte('vue', '3.4'))->toBeTrue();
 });
 
 test('versionLt checks php ecosystem with < constraint', function (): void {
-    $this->php->shouldReceive('uses')->once()->with('cakephp/cakephp', '<5.4')->andReturn(true);
+    $this->php->expects('uses')->with('cakephp/cakephp', '<5.4')->returns(true);
 
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->versionLt('cakephp/cakephp', '5.4'))->toBeTrue();
 });
 
 test('uses accepts composer semver constraints via inspector', function (): void {
-    $this->php->shouldReceive('uses')->once()->with('cakephp/cakephp', '>=5.0 <6')->andReturn(true);
+    $this->php->expects('uses')->with('cakephp/cakephp', '>=5.0 <6')->returns(true);
 
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->uses('cakephp/cakephp', '>=5.0 <6'))->toBeTrue();
 });
 
 test('uses returns false when neither ecosystem matches', function (): void {
-    $this->php->shouldReceive('uses')->once()->with('cakephp/cakephp', '>=6.0')->andReturn(false);
-    $this->js->shouldReceive('uses')->once()->with('cakephp/cakephp', '>=6.0')->andReturn(false);
+    $this->php->expects('uses')->with('cakephp/cakephp', '>=6.0')->returns(false);
+    $this->js->expects('uses')->with('cakephp/cakephp', '>=6.0')->returns(false);
 
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->uses('cakephp/cakephp', '>=6.0'))->toBeFalse();
 });
 
 test('packageVersion returns resolved php package version', function (): void {
-    $this->php->shouldReceive('package')->once()->with('cakephp/cakephp')->andReturn(
+    $this->php->expects('package')->with('cakephp/cakephp')->returns(
         inspectorPackage('cakephp/cakephp', '5.4.2'),
     );
 
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->packageVersion('cakephp/cakephp'))->toBe('5.4.2');
 });
 
 test('packageVersion returns null when package is missing', function (): void {
-    $this->php->shouldReceive('package')->once()->with('missing/pkg')->andReturn(null);
-    $this->js->shouldReceive('package')->once()->with('missing/pkg')->andReturn(null);
+    $this->php->expects('package')->with('missing/pkg')->returns(null);
+    $this->js->expects('package')->with('missing/pkg')->returns(null);
 
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->packageVersion('missing/pkg'))->toBeNull();
 });
@@ -310,11 +289,10 @@ test('packageVersion returns null when package is missing', function (): void {
 test('inspectorPackages returns only direct dependencies by default', function (): void {
     $direct = inspectorPackage('cakephp/cakephp', '5.4.0')->setDirect(true);
     $transitive = inspectorPackage('doctrine/inflector', '2.0.0')->setDirect(false);
-    $this->php->shouldReceive('packages')->andReturn(new PackageCollection([$direct, $transitive]));
+    $this->php->allows('packages')->returns(new PackageCollection([$direct, $transitive]));
 
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->listAllDependencies())->toBeFalse()
         ->and($assist->inspectorPackages())->toBe([
@@ -331,11 +309,10 @@ test('inspectorPackages includes transitive packages when dependencies is all', 
 
     $direct = inspectorPackage('cakephp/cakephp', '5.4.0')->setDirect(true);
     $transitive = inspectorPackage('doctrine/inflector', '2.0.0')->setDirect(false);
-    $this->php->shouldReceive('packages')->andReturn(new PackageCollection([$direct, $transitive]));
+    $this->php->allows('packages')->returns(new PackageCollection([$direct, $transitive]));
 
-    $assist = Mockery::mock(GuidelineAssist::class, [$this->project, $this->config])->makePartial();
-    $assist->shouldAllowMockingProtectedMethods();
-    $assist->shouldReceive('discover')->andReturn([]);
+    $assist = Double::for(new GuidelineAssist($this->project->instance(), $this->config))->passthru();
+    $assist->allows('discover')->returns([]);
 
     expect($assist->listAllDependencies())->toBeTrue()
         ->and($assist->inspectorPackages())->toHaveCount(2)

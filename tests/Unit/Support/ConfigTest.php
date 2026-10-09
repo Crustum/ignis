@@ -1,8 +1,9 @@
 <?php
+
 declare(strict_types=1);
 
 use Crustum\Ignis\Support\Config;
-
+use Crustum\Ignis\Support\ProjectRoot;
 it('may store and retrieve guidelines status', function (): void {
     $config = new Config;
 
@@ -82,3 +83,18 @@ it('may store and retrieve packages', function (): void {
 
     expect($config->getPackages())->toEqual($packages);
 });
+
+it('rejects non-object configuration', function (string $contents): void {
+    file_put_contents(ProjectRoot::path() . DS . 'ignis.json', $contents);
+
+    $config = new Config();
+
+    expect($config->isValid())->toBeFalse()
+        ->and($config->getGuidelines())->toBeFalse()
+        ->and($config->getPackages())->toBeEmpty();
+})->with([
+    'list' => ['["guidelines"]'],
+    'scalar' => ['"guidelines"'],
+    'number' => ['42'],
+    'invalid JSON' => ['{guidelines: true}'],
+]);

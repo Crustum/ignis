@@ -1,0 +1,96 @@
+{% set pest = assist.hasPackage('pestphp/pest') %}
+# Endpoint Tests
+
+## How to Write the Test
+
+Use `Cake\TestSuite\IntegrationTestTrait` in a `Cake\TestSuite\TestCase` subclass. Dispatch with `get()`, `post()`, `put()`, `patch()`, `delete()`, `options()`, or `head()` — all but `get()` and `delete()` accept a request body as the second parameter.
+
+```php
+class ArticlesControllerTest extends TestCase
+{
+    use IntegrationTestTrait;
+
+    protected array $fixtures = ['app.Articles'];
+
+    public function testIndexPostData(): void
+    {
+        $data = [
+            'user_id' => 1,
+            'published' => 1,
+            'slug' => 'new-article',
+            'title' => 'New Article',
+            'body' => 'New Body',
+        ];
+        $this->post('/articles', $data);
+
+        $this->assertResponseSuccess();
+        $articles = $this->getTableLocator()->get('Articles');
+        $this->assertSame(1, $articles->find()->where(['title' => $data['title']])->count());
+    }
+}
+```
+
+Set up the request before dispatching: `$this->session(['Auth.User.id' => 1])` for a signed-in user, `$this->cookie('name', 'value')` for cookies, `$this->configRequest(['headers' => ['Accept' => 'application/json']])` for headers. Request state resets in `tearDown()`.
+
+When `CsrfProtectionMiddleware` or `FormProtectionComponent` guards the action, enable tokens and keep debug on so the form-protection debug token is accepted:
+
+```php
+$this->enableCsrfToken();
+$this->enableSecurityToken();
+$this->post('/posts/add', ['title' => 'Exciting news!']);
+```
+
+Declare unlocked dynamic fields with `$this->setUnlockedFields(['dynamic_field'])`, and fake HTTPS with `$this->configRequest(['environment' => ['HTTPS' => 'on']])`.
+
+## Endpoint Coverage
+
+Write a test for each applicable case:
+
+- The request has missing or invalid authentication.
+- The request targets a record owned by someone else.
+- The user has an insufficient role or permission.
+- The request fails the validation.
+- The request is valid. Assert both the response and the persisted state.
+
+Assert the application's actual behavior rather than a generic status code. An API returns `401` for a missing or invalid token, while a browser endpoint redirects to the sign-in route.
+
+## Cross-Record Isolation
+
+Assert the status code returned for a request touching another user's record. Use `404` rather than `403` when one user must not learn that another user's record exists, because `403` confirms its existence.
+
+## Test Authorization Where It Lives
+
+An HTTP test shows that the endpoint performs authorization. It cannot identify which mechanism refused the request because middleware, a policy, and an explicit exception can all produce the same status.
+
+- Assert the complete permission matrix against the authorization layer the app uses. A failure then names the rule that is not correct.
+- Write one HTTP test for one refused role, which shows that the endpoint calls the authorization.
+
+## Testing Validation
+
+- Write one test for each validation rule when each failure represents a separate contract.
+- Write one test with an empty payload to assert several required fields together.
+- Assert the text of the message that the user gets. A message that is present but wrong is a defect.
+- Use a data provider with the `#[DataProvider]` attribute for input values that need the same setup and the same assertions. Use the `#[TestWith]` attribute for a small set of values.
+
+Send an input value that is not valid through the application, and assert the error. Do not assert that a validator array contains a string, because that assertion tests the declaration and not the behavior. Use such an assertion only for a rule that no request can reach, and write the reason in the test.
+
+### Which Layer Owns Which Case
+
+The table-validator test owns the matrix of values that pass and fail. The endpoint test proves that the endpoint applies the validation and that the user receives the message.
+
+When both tests contain the matrix, move it to the validator test and retain one case in the endpoint test. Never remove the last case, because the validator test still passes if the request omits the validation.
+
+## JSON Endpoints and Uploads
+
+For a JSON action, ask for JSON and compare the decoded body against a written expectation:
+
+```php
+$this->configRequest(['headers' => ['Accept' => 'application/json']]);
+$this->get('/markers/view/1.json');
+$this->assertResponseOk();
+$this->assertSame($expected, json_decode((string)$this->_response->getBody(), true));
+```
+
+For file uploads, pass `UploadedFileInterface` objects (e.g. `Laminas\Diactoros\UploadedFile`) in the request data — array-style `$_FILES` data fails the HTTP-upload check in CLI. Also pass them via the `files` request-config option when the code reads files through `ServerRequest::getUploadedFile()` / `getUploadedFiles()`.
+
+Flash assertions need retained flashes: call `enableRetainFlashMessages()` first, then `assertSession('That article does not exist', 'Flash.flash.0.message')` or `assertFlashMessage('Article deleted', 'flash')`.

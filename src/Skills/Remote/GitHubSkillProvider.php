@@ -7,6 +7,7 @@ use Cake\Collection\Collection;
 use Cake\Core\Configure;
 use Cake\Http\Client;
 use Cake\Http\Client\Response;
+use Crustum\Ignis\Install\SkillWriter;
 use RuntimeException;
 use Throwable;
 
@@ -55,29 +56,69 @@ class GitHubSkillProvider
         }
 
         $basePath = $this->repository->path;
-        $markers = (new Collection($tree['tree']))
-            ->filter(
-                fn(array $item): bool => ($item['type'] ?? null) === 'blob'
-                    && in_array(basename((string)($item['path'] ?? '')), ['SKILL.md', 'SKILL.twig'], true),
-            );
+        $prefix = $basePath === '' ? '' : $basePath . '/';
 
-        if ($basePath !== '') {
-            $prefix = $basePath . '/';
-            $markers = $markers->filter(function (array $item) use ($prefix): bool {
-                $skillDirectory = dirname((string)$item['path']);
+        return (new Collection($tree['tree']))
+            ->filter(function (array $item) use ($prefix): bool {
+                $path = (string)($item['path'] ?? '');
 
-                return str_starts_with($skillDirectory, $prefix)
-                    && !str_contains(substr($skillDirectory, strlen($prefix)), '/');
-            });
-        }
-
-        return $markers
+                return ($item['type'] ?? null) === 'blob'
+                    && $this->isSkillMarker($path)
+                    && str_starts_with($path, $prefix)
+                    && SkillWriter::isValidSkillName(static::skillName($path));
+            })
             ->map(fn(array $item): RemoteSkill => new RemoteSkill(
-                basename(dirname((string)$item['path'])),
+                static::skillName((string)$item['path']),
                 $this->repository->fullName(),
-                dirname((string)$item['path']),
+                static::skillDirectory((string)$item['path']),
             ))
             ->indexBy(fn(RemoteSkill $skill): string => $skill->name);
+    }
+
+    /**
+     * Whether a tree path points at a skill marker file.
+     *
+     * @param string $path Repository-relative tree path
+     * @return bool
+     */
+    protected function isSkillMarker(string $path): bool
+    {
+        $name = str_contains($path, '/') ? substr($path, (int)strrpos($path, '/') + 1) : $path;
+
+        return $name === 'SKILL.md' || $name === 'SKILL.twig';
+    }
+
+    /**
+     * Derive a skill name from its marker path.
+     *
+     * @param string $markerPath Repository-relative marker path
+     * @return string
+     */
+    protected static function skillName(string $markerPath): string
+    {
+        $directory = self::skillDirectory($markerPath);
+
+        if ($directory === '' || !str_contains($directory, '/')) {
+            return $directory;
+        }
+
+        return substr($directory, (int)strrpos($directory, '/') + 1);
+    }
+
+    /**
+     * Derive a skill directory from its marker path.
+     *
+     * Repository paths are always slash-delimited, so basename() and dirname()
+     * would split on a backslash under Windows.
+     *
+     * @param string $markerPath Repository-relative marker path
+     * @return string
+     */
+    protected static function skillDirectory(string $markerPath): string
+    {
+        return str_contains($markerPath, '/')
+            ? substr($markerPath, 0, (int)strrpos($markerPath, '/'))
+            : '';
     }
 
     /**
@@ -97,11 +138,27 @@ class GitHubSkillProvider
 
         $skillFiles = $this->extractSkillFilesFromTree($tree['tree'], $skill->path);
 
-        if ($skillFiles->isEmpty() || !$this->ensureDirectoryExists($targetPath)) {
+        if ($skillFiles->isEmpty()) {
             return false;
         }
 
-        $files = $skillFiles->filter(fn(array $item): bool => ($item['type'] ?? null) === 'blob');
+        $blobs = $skillFiles->filter(fn(array $item): bool => ($item['type'] ?? null) === 'blob');
+
+        if (self::treeEscapesSkillDirectory($blobs->toList())) {
+            return false;
+        }
+
+        if (!$this->ensureDirectoryExists($targetPath)) {
+            return false;
+        }
+
+        $files = $blobs
+            ->reject(fn(array $item): bool => preg_match('/\.(php\d?|phar|phtml)$/i', (string)($item['path'] ?? '')) === 1);
+
+        if (!$this->treeContainsSkillMarker($files->toList())) {
+            return false;
+        }
+
         $directories = $skillFiles->filter(fn(array $item): bool => ($item['type'] ?? null) === 'tree');
 
         foreach ($directories as $directory) {
@@ -116,6 +173,42 @@ class GitHubSkillProvider
         }
 
         return $this->downloadFiles($files->toList(), $targetPath, $skill->path);
+    }
+
+    /**
+     * Whether any tree path escapes the skill directory.
+     *
+     * @param array<int, array<string, mixed>> $blobs Blob tree entries
+     * @return bool
+     */
+    protected static function treeEscapesSkillDirectory(array $blobs): bool
+    {
+        foreach ($blobs as $item) {
+            foreach (explode('/', (string)($item['path'] ?? '')) as $segment) {
+                if (!SkillWriter::isValidSkillName($segment)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether the tree holds a skill marker file.
+     *
+     * @param array<int, array<string, mixed>> $files Blob tree entries
+     * @return bool
+     */
+    protected function treeContainsSkillMarker(array $files): bool
+    {
+        foreach ($files as $item) {
+            if ($this->isSkillMarker((string)($item['path'] ?? ''))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -135,7 +228,7 @@ class GitHubSkillProvider
                 'https://api.github.com/repos/%s/%s/git/trees/%s?recursive=1',
                 $this->repository->owner,
                 $this->repository->repo,
-                urlencode($this->resolveDefaultBranch()),
+                urlencode($this->resolveBranch()),
             ),
         );
 
@@ -237,7 +330,7 @@ class GitHubSkillProvider
             'https://raw.githubusercontent.com/%s/%s/%s/%s',
             $this->repository->owner,
             $this->repository->repo,
-            $this->resolveDefaultBranch(),
+            $this->resolveBranch(),
             ltrim($path, '/'),
         );
     }
@@ -386,6 +479,26 @@ class GitHubSkillProvider
         }
 
         return $headers;
+    }
+
+    /**
+     * Resolve and cache the repository default branch.
+     *
+     * @return string Default branch name
+     */
+
+    /**
+     * Resolve the branch used for tree and raw content requests.
+     *
+     * @return string Branch name
+     */
+    protected function resolveBranch(): string
+    {
+        if ($this->repository->branch !== '') {
+            return $this->repository->branch;
+        }
+
+        return $this->resolveDefaultBranch();
     }
 
     /**

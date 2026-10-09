@@ -6,10 +6,9 @@ namespace Tests\Unit\Install\Agents;
 
 use Crustum\Ignis\Install\Agents\Copilot;
 use Crustum\Ignis\Install\Detection\DetectionStrategyFactory;
-use Mockery;
 
 beforeEach(function (): void {
-    $this->strategyFactory = Mockery::mock(DetectionStrategyFactory::class);
+    $this->strategyFactory = new DetectionStrategyFactory(freshTestContainer());
 });
 
 test('httpMcpServerConfig returns default http config', function (): void {

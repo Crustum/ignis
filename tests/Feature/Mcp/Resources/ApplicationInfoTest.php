@@ -80,7 +80,9 @@ it('reads the configured default datasource name', function (): void {
     $response = (new ApplicationInfoTool(mockApplicationInfoProject()))->handle(new Request([]));
 
     expect($response)->toolJsonContent(function (array $data): void {
-        expect($data['database_engine'])->toBe('test')
+        expect($data['database_engine'])->toBe('sqlite')
             ->and($data['database_engine'])->not->toBeArray();
     });
+
+    Configure::delete('Datasources.default');
 });

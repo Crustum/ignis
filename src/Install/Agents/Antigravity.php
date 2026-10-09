@@ -4,13 +4,14 @@ declare(strict_types=1);
 namespace Crustum\Ignis\Install\Agents;
 
 use Crustum\Ignis\Contracts\SupportsGuidelines;
+use Crustum\Ignis\Contracts\SupportsMcp;
 use Crustum\Ignis\Contracts\SupportsSkills;
 use Crustum\Ignis\Install\Enums\Platform;
 
 /**
  * Antigravity agent installer.
  */
-class Antigravity extends Agent implements SupportsGuidelines, SupportsSkills
+class Antigravity extends Agent implements SupportsGuidelines, SupportsMcp, SupportsSkills
 {
     /**
      * Agent identifier.
@@ -58,9 +59,19 @@ class Antigravity extends Agent implements SupportsGuidelines, SupportsSkills
     public function projectDetectionConfig(): array
     {
         return [
-            'paths' => ['.agents'],
-            'files' => ['GEMINI.md'],
+            'paths' => ['.gemini'],
+            'files' => ['.agents/mcp_config.json'],
         ];
+    }
+
+    /**
+     * MCP configuration output path.
+     *
+     * @return string
+     */
+    public function mcpConfigPath(): string
+    {
+        return $this->ignisConfig('agents.antigravity.mcp_config_path', '.agents/mcp_config.json');
     }
 
     /**

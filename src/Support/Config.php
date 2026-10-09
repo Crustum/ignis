@@ -128,27 +128,13 @@ class Config
     }
 
     /**
-     * Whether ignis.json exists and contains valid JSON.
+     * Whether ignis.json exists and contains a JSON object.
      *
      * @return bool
      */
     public function isValid(): bool
     {
-        $path = $this->filePath();
-
-        if (!is_file($path)) {
-            return false;
-        }
-
-        $contents = file_get_contents($path);
-
-        if ($contents === false) {
-            return false;
-        }
-
-        json_decode($contents, true);
-
-        return json_last_error() === JSON_ERROR_NONE;
+        return $this->read() !== null;
     }
 
     /**
@@ -208,25 +194,37 @@ class Config
      */
     protected function all(): array
     {
+        return $this->read() ?? [];
+    }
+
+    /**
+     * Decode ignis.json when it contains a JSON object.
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function read(): ?array
+    {
         $path = $this->filePath();
 
         if (!is_file($path)) {
-            return [];
+            return null;
         }
 
         $contents = file_get_contents($path);
 
         if ($contents === false) {
-            return [];
+            return null;
         }
 
-        $config = json_decode($contents, true);
+        $config = json_decode($contents);
 
-        if (json_last_error() !== JSON_ERROR_NONE || !is_array($config)) {
-            return [];
+        if (json_last_error() !== JSON_ERROR_NONE || !is_object($config)) {
+            return null;
         }
 
-        return $config;
+        $decoded = json_decode($contents, true);
+
+        return is_array($decoded) ? $decoded : null;
     }
 
     /**

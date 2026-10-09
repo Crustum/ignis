@@ -4,13 +4,14 @@ declare(strict_types=1);
 namespace Crustum\Ignis\Install\Agents;
 
 use Crustum\Ignis\Contracts\SupportsGuidelines;
+use Crustum\Ignis\Contracts\SupportsMcp;
 use Crustum\Ignis\Contracts\SupportsSkills;
 use Crustum\Ignis\Install\Enums\Platform;
 
 /**
  * Pi agent installer.
  */
-class Pi extends Agent implements SupportsGuidelines, SupportsSkills
+class Pi extends Agent implements SupportsGuidelines, SupportsMcp, SupportsSkills
 {
     /**
      * Agent identifier.
@@ -61,6 +62,16 @@ class Pi extends Agent implements SupportsGuidelines, SupportsSkills
             'paths' => ['.pi'],
             'files' => ['.pi/settings.json'],
         ];
+    }
+
+    /**
+     * Guidelines output path.
+     *
+     * @return string
+     */
+    public function mcpConfigPath(): string
+    {
+        return $this->ignisConfig('agents.pi.mcp_config_path', '.pi/mcp.json');
     }
 
     /**

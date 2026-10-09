@@ -56,3 +56,27 @@ echo $this->Html->link('Login', ['_name' => 'login']);
 ```
 
 Apply CSRF and other middleware to scopes with `registerMiddleware()` / `applyMiddleware()` when protection should not be global — see the Controllers and Security rules for request handling inside actions.
+
+## Use Resource Routes for Resourceful Actions
+
+Use `resources()` when the endpoint follows standard resource actions. Define explicit routes when the behavior does not fit that vocabulary.
+
+Organize each controller around one resource where the app does so. When a controller needs a custom action such as `publish`, `approve`, or `archive`, first consider whether that behavior represents a separate resource — a focused controller gives the behavior its own authorization, validation, and middleware boundary:
+
+```php
+// Custom action on the primary controller:
+$routes->post('/podcasts/{id}/publish', ['controller' => 'Podcasts', 'action' => 'publish']);
+
+// The published podcast modeled as a resource:
+$routes->post('/published-podcasts/{id}', ['controller' => 'PublishedPodcasts', 'action' => 'add']);
+$routes->delete('/published-podcasts/{id}', ['controller' => 'PublishedPodcasts', 'action' => 'delete']);
+```
+
+Treat a custom verb as a design signal, not proof that another controller is required. Use query parameters for simple filtering, and keep an explicit action route when modeling the operation as a resource would obscure the domain or conflict with established project conventions.
+
+When the operation extracts into an action class, call its entry point `handle()`:
+
+```php
+// src/Action/PublishPodcast.php
+$result = (new PublishPodcast())->handle($podcast);
+```

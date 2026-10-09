@@ -9,20 +9,40 @@ namespace Crustum\Ignis\Support;
 class ProjectRoot
 {
     /**
-     * Optional test or alternate project root override.
+     * Optional test or alternate project root override (install write target).
      *
      * @var string|null
      */
     protected static ?string $override = null;
 
     /**
-     * Return the active project root path.
+     * Return the active project root path (write / install target).
      *
      * @return string
      */
     public static function path(): string
     {
         return self::$override ?? ROOT;
+    }
+
+    /**
+     * Return the CakePHP application ROOT (bin/cake, vendor) — never the --path target.
+     *
+     * @return string
+     */
+    public static function applicationPath(): string
+    {
+        return ROOT;
+    }
+
+    /**
+     * Return the current override, or null when using application ROOT.
+     *
+     * @return string|null
+     */
+    public static function override(): ?string
+    {
+        return self::$override;
     }
 
     /**

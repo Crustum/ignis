@@ -47,7 +47,7 @@ class SkillWriter
      */
     public function write(Skill $skill): int
     {
-        if (!$this->isValidSkillName($skill->name)) {
+        if (!self::isValidSkillName($skill->name)) {
             throw new RuntimeException("Invalid skill name: {$skill->name}");
         }
 
@@ -144,13 +144,33 @@ class SkillWriter
      */
     public function writeAll(Collection $skills): array
     {
-        $results = [];
+        $valid = [];
+        $invalid = [];
 
         foreach ($skills as $name => $skill) {
-            $results[(string)$name] = $this->write($skill);
+            if (self::isValidSkillName($skill->name)) {
+                $valid[$name] = $skill;
+            } else {
+                $invalid[$name] = $skill;
+            }
         }
 
-        return $results;
+        $written = [];
+
+        foreach ($valid as $name => $skill) {
+            $written[(string)$name] = $this->write($skill);
+        }
+
+        if ($invalid !== []) {
+            $badNames = implode(', ', array_map(
+                static fn(Skill $skill): string => $skill->name,
+                $invalid,
+            ));
+
+            throw new RuntimeException("Invalid skill name: {$badNames}");
+        }
+
+        return $written;
     }
 
     /**
@@ -162,12 +182,12 @@ class SkillWriter
      */
     public function sync(Collection $skills, array $previouslyTrackedSkills = []): array
     {
-        $written = $this->writeAll($skills);
         $newSkillNames = array_keys($skills->toArray());
         $staleSkillNames = array_values(array_diff($previouslyTrackedSkills, $newSkillNames));
-        $this->removeStale($staleSkillNames);
+        $removals = $this->removeStale($staleSkillNames);
+        $failedRemovals = array_fill_keys(array_keys($removals, false, true), self::FAILED);
 
-        return $written;
+        return [...$failedRemovals, ...$this->writeAll($skills)];
     }
 
     /**
@@ -178,7 +198,7 @@ class SkillWriter
      */
     public function remove(string $skillName): bool
     {
-        if (!$this->isValidSkillName($skillName)) {
+        if (!self::isValidSkillName($skillName)) {
             return false;
         }
 
@@ -357,9 +377,7 @@ class SkillWriter
             $content = MarkdownFormatter::format(trim($this->renderTwigFile($file->getRealPath())));
             $replacedTargetFile = preg_replace('/\.twig$/', '.md', $targetFile);
 
-            if ($replacedTargetFile === null) {
-                $replacedTargetFile = substr($targetFile, 0, -5) . '.md';
-            }
+            $replacedTargetFile ??= substr($targetFile, 0, -5) . '.md';
 
             return file_put_contents($replacedTargetFile, $this->ensureTrailingNewline($content)) !== false;
         }
@@ -371,7 +389,19 @@ class SkillWriter
             return file_put_contents($targetFile, $this->ensureTrailingNewline($content)) !== false;
         }
 
-        return Filesystem::copyFile($file->getRealPath(), $targetFile);
+        if (!Filesystem::copyFile($file->getRealPath(), $targetFile)) {
+            return false;
+        }
+
+        if (PHP_OS_FAMILY !== 'Windows') {
+            $permissions = $file->getPerms();
+
+            if (is_int($permissions) && is_writable($targetFile)) {
+                chmod($targetFile, $permissions & 0777 & ~umask());
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -568,16 +598,18 @@ class SkillWriter
     }
 
     /**
-     * Validate a skill name against path traversal patterns.
+     * Validate a skill name against path traversal and reserved names.
      *
      * @param string $name Skill name
      * @return bool
      */
-    protected function isValidSkillName(string $name): bool
+    public static function isValidSkillName(string $name): bool
     {
-        $hasPathTraversal = str_contains($name, '..') || str_contains($name, '/') || str_contains($name, '\\');
+        if (str_contains($name, '..') || str_contains($name, '/') || str_contains($name, '\\') || str_contains($name, "\0")) {
+            return false;
+        }
 
-        return !$hasPathTraversal && trim($name) !== '';
+        return trim($name, ". \t\n\r\0\x0B") !== '';
     }
 
     /**

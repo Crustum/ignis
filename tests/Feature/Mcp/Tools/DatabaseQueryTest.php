@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Cake\Database\Driver\Mysql;
+use Cake\Database\Driver\Sqlite;
 use Crustum\Ignis\Mcp\Tools\DatabaseQuery;
 use Crustum\Mcp\Request;
 
@@ -115,6 +117,8 @@ it('adds table prefix to queries', function (): void {
         'SELECT * FROM users JOIN posts ON users.id = posts.user_id JOIN comments ON posts.id = comments.post_id' => 'SELECT * FROM wp_users JOIN wp_posts ON users.id = posts.user_id JOIN wp_comments ON posts.id = comments.post_id',
         'SELECT * FROM "users"' => 'SELECT * FROM "wp_users"',
         'WITH cte AS (SELECT * FROM users) SELECT * FROM cte' => 'WITH cte AS (SELECT * FROM wp_users) SELECT * FROM cte',
+        'WITH RecentUsers AS (SELECT * FROM users) SELECT * FROM recentusers' => 'WITH RecentUsers AS (SELECT * FROM wp_users) SELECT * FROM recentusers',
+        'WITH RecentUsers AS (SELECT * FROM users) SELECT * FROM "RecentUsers"' => 'WITH RecentUsers AS (SELECT * FROM wp_users) SELECT * FROM "RecentUsers"',
         'WITH cte1 AS (SELECT * FROM users), cte2 AS (SELECT * FROM posts) SELECT * FROM cte1 JOIN cte2' => 'WITH cte1 AS (SELECT * FROM wp_users), cte2 AS (SELECT * FROM wp_posts) SELECT * FROM cte1 JOIN cte2',
         'WITH RECURSIVE cte AS (SELECT * FROM users) SELECT * FROM cte' => 'WITH RECURSIVE cte AS (SELECT * FROM wp_users) SELECT * FROM cte',
         'WITH cte (id, name) AS (SELECT id, name FROM users) SELECT * FROM cte' => 'WITH cte (id, name) AS (SELECT id, name FROM wp_users) SELECT * FROM cte',
@@ -137,6 +141,14 @@ it('adds table prefix to queries', function (): void {
         'SELECT * FROM public.users JOIN public.posts ON public.users.id = public.posts.user_id' => 'SELECT * FROM public.wp_users JOIN public.wp_posts ON public.users.id = public.posts.user_id',
         'SELECT * FROM "public"."users"' => 'SELECT * FROM "public"."wp_users"',
         'SELECT * FROM `mydb`.`users`' => 'SELECT * FROM `mydb`.`wp_users`',
+        "SELECT 'FROM users' AS label FROM users" => "SELECT 'FROM users' AS label FROM wp_users",
+        'SELECT "FROM users" AS label FROM users' => 'SELECT "FROM users" AS label FROM wp_users',
+        'SELECT * FROM users -- JOIN posts' => 'SELECT * FROM wp_users -- JOIN posts',
+        'SELECT * FROM users /* JOIN posts */' => 'SELECT * FROM wp_users /* JOIN posts */',
+        "SELECT 'users AS (' AS label FROM users" => "SELECT 'users AS (' AS label FROM wp_users",
+        "SELECT 'it''s FROM posts' AS label FROM users" => "SELECT 'it''s FROM posts' AS label FROM wp_users",
+        "SELECT * FROM users WHERE note = 'unterminated" => "SELECT * FROM wp_users WHERE note = 'unterminated",
+        "SELECT * FROM users -- JOIN posts\nJOIN comments ON 1 = 1" => "SELECT * FROM wp_users -- JOIN posts\nJOIN wp_comments ON 1 = 1",
     ];
 
     foreach ($testCases as $input => $expected) {
@@ -148,3 +160,71 @@ it('adds table prefix to queries', function (): void {
         expect($response)->isToolResult()->toolHasNoError();
     }
 });
+
+it('blocks write operations disguised as read-only queries', function (): void {
+    $tool = new DatabaseQuery();
+
+    $queries = [
+        'WITH t AS (DELETE FROM users RETURNING *) SELECT * FROM t',
+        'WITH t AS (UPDATE users SET admin = 1 RETURNING *) SELECT * FROM t',
+        'WITH t AS (INSERT INTO logs VALUES (1) RETURNING *) SELECT * FROM t',
+        "WITH t AS (\n    -- a comment\n    DELETE FROM users RETURNING *\n) SELECT * FROM t",
+        'WITH t AS (/* a comment */ DELETE FROM users RETURNING *) SELECT * FROM t',
+        'EXPLAIN ANALYZE DELETE FROM users',
+        'EXPLAIN (ANALYZE, BUFFERS) UPDATE users SET admin = 1',
+        'EXPLAIN FORMAT=TREE DELETE FROM users',
+        'SELECT * INTO users_copy FROM users',
+        "SELECT id FROM users INTO OUTFILE '/tmp/users.csv'",
+        'SELECT 1; DELETE FROM users',
+        'SELECT /*!50000 1 */ FROM users',
+        "SELECT 1 /* don't */; DELETE FROM users WHERE name = 'x'",
+        "SELECT 'a\\'; DELETE FROM users; --'",
+    ];
+
+    foreach ($queries as $query) {
+        $response = $tool->handle(new Request(['query' => $query]));
+
+        expect($response)->isToolResult()
+            ->toolHasError()
+            ->toolTextContains('Only read-only queries are allowed');
+    }
+});
+
+
+it('allows read-only queries containing write keyword look-alikes', function (): void {
+    registerMockFeatureDatabaseConnection();
+    $tool = new DatabaseQuery();
+
+    $queries = [
+        "SELECT REPLACE(name, 'a', 'b') FROM users",
+        "SELECT (REPLACE(name, 'a', 'b')) FROM users",
+        "SELECT INSERT('hello', 1, 2, 'x')",
+        "SELECT * FROM users WHERE action = 'DELETE FROM users'",
+        'SELECT `delete` FROM `updates`',
+        "SELECT * FROM users -- DELETE FROM users\nWHERE id = 1",
+        'SELECT * FROM users;',
+        'SHOW CREATE TABLE users',
+        'EXPLAIN ANALYZE SELECT * FROM users',
+        'EXPLAIN (ANALYZE) SELECT * FROM users',
+        'EXPLAIN users',
+    ];
+
+    foreach ($queries as $query) {
+        $response = $tool->handle(new Request(['query' => $query]));
+
+        expect($response)->isToolResult()
+            ->toolHasNoError();
+    }
+});
+
+it('only treats backslashes as escapes on mysql', function (string $driverClass, string $expected): void {
+    registerMockFeatureDatabaseConnection('wp_', [$expected], $driverClass);
+
+    $tool = new DatabaseQuery();
+    $response = $tool->handle(new Request(['query' => "SELECT 'a\\' AS x, 'b' AS y FROM users, 'c' AS z"]));
+
+    expect($response)->isToolResult()->toolHasNoError();
+})->with([
+    'mysql' => [Mysql::class, "SELECT 'a\\' AS x, 'b' AS y FROM users, 'c' AS z"],
+    'sqlite' => [Sqlite::class, "SELECT 'a\\' AS x, 'b' AS y FROM wp_users, 'c' AS z"],
+]);

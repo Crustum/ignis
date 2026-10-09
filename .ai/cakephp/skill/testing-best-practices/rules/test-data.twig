@@ -1,0 +1,89 @@
+{% set pest = assist.hasPackage('pestphp/pest') %}
+# Fixtures and Test Data
+
+## Author Fixtures in tests/Fixture
+
+A fixture is a `TestFixture` subclass whose `$records` are inserted before each test. Keep every record's keys identical — rows are bulk-inserted — and turn on `strictFields` so typos and schema drift fail loudly instead of silently:
+
+```php
+namespace App\Test\Fixture;
+
+use Cake\TestSuite\Fixture\TestFixture;
+
+class ArticlesFixture extends TestFixture
+{
+    protected bool $strictFields = true;
+
+    public array $records = [
+        [
+            'title' => 'First Article',
+            'body' => 'First Article Body',
+            'published' => '1',
+            'created' => '2007-03-18 10:39:23',
+            'modified' => '2007-03-18 10:41:31',
+        ],
+    ];
+}
+```
+
+Need functions or dynamic data in rows? Build `$records` in `init()` instead of the property. Do not hand-write auto-increment values — they interfere with sequence generation on PostgreSQL and SQL Server. Keep fixture schema aligned with the migrations, and match multi-datasource models with `test_`-prefixed fixture connections (`test_mydb` for `mydb`), so a run can never truncate application data.
+
+## Each Test Declares and Owns Its Data
+
+Load a fixture for every model the test queries, in each test case that needs it:
+
+```php
+protected array $fixtures = ['app.Articles', 'app.Comments'];
+```
+
+Use `getFixtures()` for a method-defined list, FQCN entries (`ArticlesFixture::class`), plugin fixtures (`'plugin.DebugKit.Articles'`), core fixtures (`'core.Comments'`), or subdirectories (`'app.Blog/Articles'` → `tests/Fixture/Blog/`).
+
+{% if pest %}
+Create mutable rows inside the test that uses them, or through a helper the test calls. Use `beforeEach()` only for configuration that applies to every test in the file. Do not create records in it.
+{% else %}
+Create mutable rows inside each test or through a private helper that the test calls. Use `setUp()` only for configuration that applies to every test in the class. Do not create records in it, because its objects remain in memory until the suite ends.
+{% endif %}
+
+Create only the rows required to arrange the behavior or support an assertion, and declare each row's owner explicitly. Prefer the rolled-back-transaction strategy per class when tests do not depend on resetting auto-increment between methods:
+
+```php
+protected function getFixtureStrategy(): FixtureStrategyInterface
+{
+    return new TransactionStrategy();
+}
+```
+
+When static `$records` grow hard to maintain, generate scenarios with the fixture-factories plugin (`bin/cake bake fixture_factory`).
+
+## Data Providers
+
+Use a data provider when the setup, test body, and assertions remain the same across input values.
+
+```php
+public static function nonAdminRoles(): array
+{
+    return [
+        'editor' => ['editor'],
+        'viewer' => ['viewer'],
+    ];
+}
+
+#[DataProvider('nonAdminRoles')]
+public function test_forbids_roles_other_than_admin(string $role): void
+{
+    // ... arrange user with $role, request the endpoint, assert refusal ...
+}
+```
+
+Declare each data provider method as `public static`.
+
+Use parameterized tests for:
+
+- roles and permissions
+- boundary values
+- input values that are invalid in the same way
+- input and output value pairs
+
+Write separate tests if the cases need a different setup, a different behavior, or different assertions. One test method with a branch in the body is two tests in one method.
+
+Give each data-provider case a key that states the difference. A failure then identifies the case without requiring you to count positions.

@@ -5,9 +5,14 @@ declare(strict_types=1);
 use Cake\Collection\Collection;
 use Cake\Command\Command;
 use Cake\Console\Arguments;
+use Cake\Console\CommandInterface;
+use Cake\Console\ConsoleIo;
+use Cake\Console\TestSuite\StubConsoleOutput;
+use Cake\Core\Configure;
 use Crustum\Ignis\Command\InstallCommand;
 use Crustum\Ignis\Install\ThirdPartyPackage;
 use Crustum\Ignis\Support\Config;
+use Crustum\Ignis\Support\SkillParseFailures;
 use Crustum\Ignis\Test\Fixtures\TestableUpdateCommand;
 
 it('shows an error when ignis.json does not exist', function (): void {
@@ -33,6 +38,16 @@ it('shows an error when agents are empty', function (): void {
 
     $this->assertExitError();
     $this->assertErrorContains('php bin/cake.php ignis install');
+});
+
+it('exits silently when only mcp is configured and no agents are stored', function (): void {
+    $config = new Config();
+    $config->setMcp(true);
+
+    $this->exec('ignis update');
+
+    $this->assertExitSuccess();
+    $this->assertOutputNotContains('Please set up Ignis with [php bin/cake.php ignis install] first.');
 });
 
 it('exits silently when no guidelines and no skills are configured', function (): void {
@@ -174,26 +189,50 @@ it('does not change config when no new packages are found during discovery', fun
 
     expect($command->execute($args, $io))->toBe(Command::CODE_SUCCESS)
         ->and($command->discoverNewContentCalled)->toBeTrue()
-        ->and($config->getSkills())->toBe(['existing-skill'])
         ->and($config->getPackages())->toBe([]);
 });
 
-it('adds selected new packages to config during discovery', function (): void {
+it('reports skill parse failures recorded during the install run', function (): void {
     $config = new Config();
     $config->setAgents(['claude_code']);
-    $config->setGuidelines(true);
-    $config->setPackages([]);
+    $config->setGuidelines(false);
+    $config->setSkills(['broken-frontmatter']);
 
-    $newPackage = new ThirdPartyPackage('vendor/awesome-pkg', true, false);
+    $failures = new SkillParseFailures();
+    $container = freshTestContainer();
+    bindInstance($container, SkillParseFailures::class, $failures);
+    Configure::write('app.container', $container);
 
-    $command = new TestableUpdateCommand($config);
-    $command->resolvedNewPackages = new Collection(['vendor/awesome-pkg' => $newPackage]);
+    $command = new class($config) extends TestableUpdateCommand {
+        #[\Override]
+        public function executeCommand(CommandInterface|string $command, array $args = [], ?ConsoleIo $io = null): ?int
+        {
+            $container = Configure::read('app.container');
+            $container->get(SkillParseFailures::class)->record(
+                testAppPath('.ai/skills/broken-frontmatter/SKILL.md'),
+                'A colon cannot be used in an unquoted mapping value',
+            );
 
-    $args = new Arguments([], [], []);
-    $io = silentConsoleIo();
+            return parent::executeCommand($command, $args, $io);
+        }
+    };
 
-    expect($command->execute($args, $io))->toBe(Command::CODE_SUCCESS);
-})->skip('Interactive package discovery prompt excluded from Cake port');
+    $args = new Arguments([], ['no-discover' => true], ['no-discover']);
+    $out = new StubConsoleOutput();
+
+    try {
+        expect($command->execute($args, new ConsoleIo($out, $out)))->toBe(Command::CODE_SUCCESS);
+
+        $output = implode("\n", $out->messages());
+
+        expect($output)
+            ->toContain('Skipped 1 skill with invalid or incomplete frontmatter, leaving existing registration unchanged:')
+            ->toContain('- broken-frontmatter (.ai/skills/broken-frontmatter/SKILL.md): A colon cannot be used in an unquoted mapping value')
+            ->toContain('Ignis guidelines and skills updated successfully.');
+    } finally {
+        Configure::delete('app.container');
+    }
+});
 
 it('skips skills when --ignore-skills flag is set even if skills are configured', function (): void {
     $config = new Config();
@@ -252,6 +291,31 @@ it('skips new-package discovery prompt when running in non-interactive mode', fu
     $command->resolvedNewPackages = new Collection(['vendor/awesome-pkg' => $newPackage]);
 
     $args = new Arguments([], ['no-interaction' => true], ['no-interaction']);
+    $io = silentConsoleIo();
+
+    expect($command->execute($args, $io))->toBe(Command::CODE_SUCCESS)
+        ->and($command->discoverNewContentCalled)->toBeTrue()
+        ->and($config->getPackages())->toBe([]);
+});
+
+it('skips new-package discovery prompt when running as a composer script', function (): void {
+    $config = new Config();
+    $config->setAgents(['claude_code']);
+    $config->setGuidelines(true);
+    $config->setPackages([]);
+
+    $newPackage = new ThirdPartyPackage('vendor/awesome-pkg', true, false);
+
+    $command = new class($config) extends TestableUpdateCommand {
+        #[\Override]
+        protected function runningAsComposerScript(): bool
+        {
+            return true;
+        }
+    };
+    $command->resolvedNewPackages = new Collection(['vendor/awesome-pkg' => $newPackage]);
+
+    $args = new Arguments([], [], []);
     $io = silentConsoleIo();
 
     expect($command->execute($args, $io))->toBe(Command::CODE_SUCCESS)

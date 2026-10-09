@@ -87,9 +87,11 @@ Correct:
 bin/cake bake migration AddSlugToProducts slug:string
 ```
 
+For a local migration that has not been shared or deployed, editing and rerunning it may be simpler than stacking a new one.
+
 ## Add Indexes in the Migration
 
-Index columns used in filters, sorts, and joins when you create or alter the table — not as a forgotten follow-up weeks later.
+Index columns used in filters, sorts, and joins when you create or alter the table — not as a forgotten follow-up weeks later. A column appearing in `WHERE` or `ORDER BY` does not automatically need its own index: weigh selectivity, write cost, and composite coverage, and avoid redundant indexes whose leading columns duplicate an existing index without serving a distinct query.
 
 ```php
 public function change(): void
@@ -110,6 +112,21 @@ Bake shortcut:
 ```bash
 bin/cake bake migration AddNameIndexToProducts name:string:index
 ```
+
+## Define Foreign Keys Deliberately
+
+Declare foreign keys with explicit delete behavior instead of relying on implicit conventions. Do not add a duplicate single-column index without checking the indexes the foreign key already creates on the target driver.
+
+```php
+$table->addForeignKey('author_id', 'authors', 'id', [
+    'delete' => 'CASCADE',
+    'constraint' => 'articles_author_id_fk',
+]);
+```
+
+## Stage Changes That Affect Existing Rows
+
+Adding a required or unique column to a populated table needs deployment-safe steps: add a nullable column, deploy code that handles both states, backfill existing rows in bounded chunks, then add the required constraint or index after the data is valid. Large backfills belong in an observable, restartable command or queue job — not inside the schema migration.
 
 ## Keep Migrations Focused
 

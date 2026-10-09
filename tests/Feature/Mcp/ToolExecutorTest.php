@@ -7,17 +7,16 @@ use Crustum\Ignis\Mcp\ToolExecutor;
 use Crustum\Ignis\Mcp\ToolRegistry;
 use Crustum\Ignis\Mcp\Tools\DatabaseConnections;
 use Crustum\Mcp\Response;
+use JMac\Testing\Double;
 
 beforeEach(function (): void {
     ToolRegistry::clearCache();
 });
 
 test('can execute tool in subprocess', function (): void {
-    $executor = Mockery::mock(ToolExecutor::class)->makePartial()
-        ->shouldAllowMockingProtectedMethods();
-    $executor->shouldReceive('buildCommand')
-        ->once()
-        ->andReturnUsing(buildToolExecutorSubprocessCommand(...));
+    $executor = Double::for(new ToolExecutor())->passthru();
+    $executor->expects('buildCommand')
+        ->resolves(buildToolExecutorSubprocessCommand(...));
 
     $response = $executor->execute(DatabaseConnections::class, []);
 
@@ -42,10 +41,9 @@ test('rejects unregistered tools', function (): void {
 });
 
 test('subprocess proves fresh process isolation', function (): void {
-    $executor = Mockery::mock(ToolExecutor::class)->makePartial()
-        ->shouldAllowMockingProtectedMethods();
-    $executor->shouldReceive('buildCommand')
-        ->andReturnUsing(fn (): array => [
+    $executor = Double::for(new ToolExecutor())->passthru();
+    $executor->allows('buildCommand')
+        ->resolves(fn (): array => [
             PHP_BINARY,
             '-r',
             'echo json_encode(["isError" => false, "content" => [["type" => "text", "text" => (string) getmypid()]]]);',
@@ -66,10 +64,9 @@ test('subprocess proves fresh process isolation', function (): void {
 });
 
 test('subprocess sees modified autoloaded code changes', function (): void {
-    $executor = Mockery::mock(ToolExecutor::class)->makePartial()
-        ->shouldAllowMockingProtectedMethods();
-    $executor->shouldReceive('buildCommand')
-        ->andReturnUsing(buildToolExecutorSubprocessCommand(...));
+    $executor = Double::for(new ToolExecutor())->passthru();
+    $executor->allows('buildCommand')
+        ->resolves(buildToolExecutorSubprocessCommand(...));
 
     $toolPath = pluginSourceFile('src/Mcp/Tools/DatabaseConnections.php');
     $originalContent = file_get_contents($toolPath);
@@ -86,7 +83,7 @@ test('subprocess sees modified autoloaded code changes', function (): void {
         expect($responseData1)->toHaveKey('default_connection');
 
         $modifiedContent = str_replace(
-            "'default_connection' => (string)Configure::read('Datasources.default', 'default'),",
+            "'default_connection' => \$aliases['default'] ?? 'default',",
             "'default_connection' => 'MODIFIED_BY_TEST',",
             $originalContent,
         );
@@ -103,11 +100,10 @@ test('subprocess sees modified autoloaded code changes', function (): void {
 });
 
 test('respects custom timeout parameter', function (): void {
-    $executor = Mockery::mock(ToolExecutor::class)->makePartial()
-        ->shouldAllowMockingProtectedMethods();
+    $executor = Double::for(new ToolExecutor())->passthru();
 
-    $executor->shouldReceive('buildCommand')
-        ->andReturnUsing(buildToolExecutorSubprocessCommand(...));
+    $executor->allows('buildCommand')
+        ->resolves(buildToolExecutorSubprocessCommand(...));
 
     $response = $executor->execute(DatabaseConnections::class, [
         'timeout' => 30,
@@ -134,10 +130,9 @@ test('resolves timeout from argument, then config, then default', function (): v
 });
 
 test('output buffering discards stray stdout during tool execution', function (): void {
-    $executor = Mockery::mock(ToolExecutor::class)->makePartial()
-        ->shouldAllowMockingProtectedMethods();
-    $executor->shouldReceive('buildCommand')
-        ->andReturnUsing(buildToolExecutorSubprocessCommand(...));
+    $executor = Double::for(new ToolExecutor())->passthru();
+    $executor->allows('buildCommand')
+        ->resolves(buildToolExecutorSubprocessCommand(...));
 
     $toolPath = pluginSourceFile('src/Mcp/Tools/DatabaseConnections.php');
     $originalContent = file_get_contents($toolPath);
@@ -201,6 +196,24 @@ test('buildCommand uses PHP_BINARY when no config is set', function (): void {
 
     expect($command[0])->toBe(PHP_BINARY);
 });
+
+test('buildCommand falls back to PHP_BINARY when the configured path is blank', function (mixed $blank): void {
+    Configure::write('Ignis.executable_paths.php', $blank);
+
+    $executor = new ToolExecutor();
+
+    $reflection = new ReflectionClass($executor);
+    $method = $reflection->getMethod('buildCommand');
+
+    $command = $method->invoke($executor, 'SomeTool', []);
+
+    expect($command[0])->toBe(PHP_BINARY);
+
+    Configure::delete('Ignis.executable_paths.php');
+})->with([
+    'empty string' => '',
+    'false' => false,
+]);
 
 test('clamps timeout values correctly', function (): void {
     $executor = new ToolExecutor();

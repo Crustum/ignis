@@ -98,8 +98,8 @@ class ToolExecutor
      */
     protected function buildCommand(string $toolClass, array $arguments): array
     {
-        $php = (string)Configure::read('Ignis.executable_paths.php', PHP_BINARY);
-        $normalized = CommandNormalizer::normalize($php);
+        $php = Configure::read('Ignis.executable_paths.php') ?: PHP_BINARY;
+        $normalized = CommandNormalizer::normalize((string)$php);
         $encoded = json_encode($arguments);
 
         return [

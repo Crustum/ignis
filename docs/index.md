@@ -25,6 +25,10 @@
     - [Major-Version Gating](#major-version-gating)
     - [First-Party vs Third-Party Targets](#first-party-vs-third-party-targets)
 - [Guidelines vs. Skills](#guidelines-vs-skills)
+- [Project Rules](#project-rules)
+    - [Recording Rules](#recording-rules)
+    - [Inferring Your Application's Conventions](#inferring-your-applications-conventions)
+    - [Disabling Project Rules](#disabling-project-rules)
 - [Documentation](#documentation)
 - [Extending Ignis](#extending-ignis)
     - [Adding Support for Other IDEs / AI Agents](#adding-support-for-other-ides-ai-agents)
@@ -97,6 +101,16 @@ bin/cake ignis install
 ```
 
 The `ignis install` command generates the relevant agent guideline and skill files for the coding agents you select during installation, and writes MCP client configuration.
+
+To open agent on a **plugin folder** as its own project, write those assets into that directory while still discovering packages from the CakePHP application:
+
+```bash
+bin/cake ignis install --path=plugins/myplugin
+```
+
+`--path` aborts if the target already contains a `.ai` directory (to avoid clobbering package Ignis sources). Use `--force` to overwrite. Without `--path`, install behavior is unchanged and there is no `.ai` conflict guard.
+
+`ignis update` accepts the same `--path` / `--force` flags and forwards them to install.
 
 Once Ignis has been installed, you're ready to start coding with Cursor, Claude Code, or your AI agent of choice.
 
@@ -267,6 +281,7 @@ This delegates to the Crustum MCP stack (`bin/cake mcp start cake-ignis`).
 | Current Time | Host clock in `App.defaultTimezone` as one formatted timestamp; prefer over shell date commands |
 | Last Error | Read the last error from the application's log files |
 | Read Log Entries | Read the last N log entries |
+| Record Rule | Record a durable [project rule](#project-rules) into `.ai/rules` so future agents inherit it |
 | List / Get Routes | Inspect application routes |
 | Config Read | Read Configure / config values |
 | Tinker / Execute | Run PHP in the application context |
@@ -396,7 +411,7 @@ This package provides [brief description].
 
 [Agent Skills](https://agentskills.io/home) are lightweight, targeted knowledge modules that agents activate on demand when working in a specific domain. Unlike guidelines (loaded upfront), skills load only when relevant — reducing context bloat.
 
-When you run `ignis install` and select skills, Ignis installs skills based on packages detected in the project (Composer + Inspector). For example, if the project includes `crustum/broadcasting`, the `broadcasting-development` skill is available.
+When you run `ignis install` and select skills, Ignis installs skills based on packages detected in the project (Composer + Inspector). For example, if the project includes `crustum/broadcasting`, the `broadcasting-development` skill is available. Skills included with Ignis, such as `infer-conventions`, are installed regardless of which packages you have.
 
 Skills use `SKILL.twig` (Twig) with YAML frontmatter (`name`, `description`). Optional `references/` files hold deeper material. Prefer a strong **description** for when to apply; do not rely on a body section titled “When to Apply” as the only discovery signal.
 
@@ -411,6 +426,7 @@ Skills ship from three places:
 
 | Example skill | Source |
 |---------------|--------|
+| `infer-conventions` | `crustum/ignis` |
 | `broadcasting-development` | `crustum/broadcasting` |
 | `blazecast-development` | `crustum/blazecast` |
 | `notification-development` | `crustum/notification` |
@@ -545,6 +561,87 @@ Ignis provides two ways to give AI agents context:
 | **Purpose** | Core conventions & best practices | Detailed implementation patterns |
 | **Path rules** | `@scoped` → `.ai/rules/ignis` | Orientation only — do not put managed scopes here |
 | **Templates** | `.twig` / `.md` | `SKILL.twig` (+ optional `references/`) |
+
+Both guidelines and skills describe the CakePHP ecosystem. To capture the conventions of your own application, you should use [project rules](#project-rules).
+
+<a name="project-rules"></a>
+## Project Rules
+
+While guidelines and skills teach agents how to write CakePHP, project rules teach them how to write your application. A rule is anything you would otherwise need to explain again in every new session:
+
+- Decisions made along the way by you, your agents, or your teammates.
+- Style guidelines and preferences that are difficult to get an agent to follow.
+- Traps and constraints that can't be inferred from the surrounding code.
+
+Rules are stored as Markdown files within your application's `.ai/rules` directory and should be committed to source control. Unlike an agent's own memory, which is personal and session-scoped, your rules are shared with your team and with every agent that works on your application.
+
+Each rule file declares the file globs it applies to within its frontmatter:
+
+```markdown
+---
+paths:
+  - src/Controller/**
+---
+
+# Controllers
+
+## Extend AppController for tenant scoping
+
+All controllers must extend `App\Controller\AppController`, which applies the
+current tenant's query scope. Extending CakePHP's base controller directly will
+leak data across tenants.
+```
+
+In addition, Ignis maintains an `.ai/rules/index.md` file which maps globs to their rule files. Agents are instructed to consult this index before planning or editing any file, so a rule is only loaded when it is relevant:
+
+```markdown
+# Project Rules Index
+
+Before planning or editing, find the row whose globs match the file's path and read that rule file.
+
+| Applies to | Rule file |
+| --- | --- |
+| src/Controller/** | .ai/rules/controllers.md |
+| src/Model/** | .ai/rules/models.md |
+```
+
+> [!NOTE]
+> Unlike the `.mcp.json` and generated guideline files, the `.ai/rules` directory should be committed to source control so that your rules are shared with your team.
+
+<a name="recording-rules"></a>
+### Recording Rules
+
+To record a rule, you may simply ask your agent to remember it:
+
+```text
+Remember that all money values are stored as integer cents, never as floats.
+```
+
+The agent will invoke Ignis's `record-rule` MCP tool with a `glob`, a short `title`, and a `note`. Ignis will then file the rule under the matching area, creating the rule file if needed, and update the index.
+
+You should always record rules using the `record-rule` tool rather than creating rule files by hand. Ignis regenerates `.ai/rules/index.md` as part of recording a rule, and agents rely on that index to discover which rules apply to the file they are working on. A rule file that is added manually will not be discovered until the index is next regenerated.
+
+<a name="inferring-your-applications-conventions"></a>
+### Inferring Your Application's Conventions
+
+Recording rules one at a time works well going forward; however, an existing application already contains years of conventions. The `infer-conventions` skill will bootstrap your rules from the code you have already written. To get started, ask your agent to use the skill:
+
+```text
+Use the infer-conventions skill
+```
+
+The skill will sweep your application across a checklist of CakePHP convention dimensions, including validation, tables/entities, controllers, authorization, architecture, testing, templates, database/migrations, and console/commands, followed by an open-ended pass for patterns such as base classes, shared traits, and plugin layouts.
+
+The skill documents what your code actually does rather than what it should do. It records only well-supported, non-default conventions, skips framework defaults and anything PHPCS, PHPStan, or Rector already enforces, and reports genuinely mixed patterns instead of recording them. Before writing any rules, the skill will present each convention it discovered, along with its supporting evidence, for your approval. If you would like the skill to record all discovered conventions without confirmation, you may tell it to "yolo".
+
+<a name="disabling-project-rules"></a>
+### Disabling Project Rules
+
+Project rules are enabled by default (`Ignis.rules.enabled` / `IGNIS_RULES_ENABLED`). To disable them entirely, define the following environment variable. This removes the `record-rule` MCP tool and stops Ignis from managing the `.ai/rules` directory:
+
+```ini
+IGNIS_RULES_ENABLED=false
+```
 
 <a name="documentation"></a>
 ## Documentation

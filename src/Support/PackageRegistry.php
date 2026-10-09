@@ -3,6 +3,9 @@ declare(strict_types=1);
 
 namespace Crustum\Ignis\Support;
 
+use Crustum\Inspector\Enums\PackageSource;
+use Crustum\Inspector\Package;
+
 /**
  * Composer/npm package names and guideline directory mappings.
  */
@@ -109,5 +112,39 @@ class PackageRegistry
     public static function inspectorName(string $package): string
     {
         return strtoupper(str_replace('-', '_', self::guidelineName($package)));
+    }
+
+    /**
+     * Whether a inspector package is first-party for Ignis.
+     *
+     * @param \Crustum\Inspector\Package $package Inspector package
+     * @return bool
+     */
+    public static function isFirstParty(Package $package): bool
+    {
+        return match ($package->source()) {
+            PackageSource::Composer => Composer::isFirstPartyPackage($package->name()),
+            PackageSource::Npm => Npm::isFirstPartyPackage($package->name()),
+        };
+    }
+
+    /**
+     * Resolve a inspector package Ignis resource path when present.
+     *
+     * @param \Crustum\Inspector\Package $package Inspector package
+     * @param string $subpath Ignis resources subpath
+     * @return string|null
+     */
+    public static function ignisPath(Package $package, string $subpath): ?string
+    {
+        $packagePath = $package->path();
+
+        if ($packagePath === null) {
+            return null;
+        }
+
+        $path = implode(DIRECTORY_SEPARATOR, [$packagePath, 'resources', 'ignis', $subpath]);
+
+        return is_dir($path) ? $path : null;
     }
 }

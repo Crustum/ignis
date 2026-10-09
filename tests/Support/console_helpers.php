@@ -12,7 +12,9 @@ use Crustum\Ignis\Install\SkillComposer;
 use Crustum\Ignis\Rules\RuleRepository;
 use Crustum\Ignis\Support\Config;
 use Crustum\Ignis\Support\ProjectRoot;
+use Crustum\Inspector\PackageCollection;
 use Crustum\Inspector\ProjectManager;
+use JMac\Testing\Double;
 
 if (!function_exists('flushIgnisConfig')) {
     /**
@@ -39,12 +41,13 @@ if (!function_exists('makeTestInstallCommand')) {
         $container = freshTestContainer();
         registerTestAgents($container);
         $detector ??= new AgentsDetector($container, new IgnisManager());
-        $guidelineComposer = Mockery::mock(GuidelineComposer::class);
-        $skillComposer = Mockery::mock(SkillComposer::class);
-        $ruleRepository = Mockery::mock(RuleRepository::class);
-        $project = Mockery::mock(ProjectManager::class);
+        $guidelineComposer = Double::for(GuidelineComposer::class);
+        $skillComposer = Double::for(SkillComposer::class);
+        $ruleRepository = Double::for(RuleRepository::class);
+        $project = Double::for(ProjectManager::class, override: true);
+        mockProjectPackages($project, new PackageCollection([]));
 
-        return new class($detector, $config, $guidelineComposer, $skillComposer, $ruleRepository, $project) extends InstallCommand {
+        return new class($detector, $config, $guidelineComposer, $skillComposer, $ruleRepository, $project->instance()) extends InstallCommand {
             protected function displayIgnisHeader(ConsoleIo $io, string $featureName, string $projectName): void
             {
             }

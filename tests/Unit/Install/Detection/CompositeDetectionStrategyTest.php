@@ -5,22 +5,22 @@ declare(strict_types=1);
 use Crustum\Ignis\Install\Contracts\DetectionStrategy;
 use Crustum\Ignis\Install\Detection\CompositeDetectionStrategy;
 use Crustum\Ignis\Install\Enums\Platform;
+use JMac\Testing\Double;
 
 beforeEach(function (): void {
-    $this->firstStrategy = Mockery::mock(DetectionStrategy::class);
-    $this->secondStrategy = Mockery::mock(DetectionStrategy::class);
-    $this->thirdStrategy = Mockery::mock(DetectionStrategy::class);
+    $this->firstStrategy = Double::for(DetectionStrategy::class);
+    $this->secondStrategy = Double::for(DetectionStrategy::class);
+    $this->thirdStrategy = Double::for(DetectionStrategy::class);
 });
 
 test('returns true when first strategy succeeds', function (): void {
     $this->firstStrategy
-        ->shouldReceive('detect')
-        ->once()
+        ->expects('detect')
         ->with(['config' => 'value'], null)
-        ->andReturn(true);
+        ->returns(true);
 
     $this->secondStrategy
-        ->shouldNotReceive('detect');
+        ->expects('detect')->never();
 
     $composite = new CompositeDetectionStrategy([
         $this->firstStrategy,
@@ -34,16 +34,14 @@ test('returns true when first strategy succeeds', function (): void {
 
 test('returns true when second strategy succeeds', function (): void {
     $this->firstStrategy
-        ->shouldReceive('detect')
-        ->once()
+        ->expects('detect')
         ->with(['config' => 'value'], null)
-        ->andReturn(false);
+        ->returns(false);
 
     $this->secondStrategy
-        ->shouldReceive('detect')
-        ->once()
+        ->expects('detect')
         ->with(['config' => 'value'], null)
-        ->andReturn(true);
+        ->returns(true);
 
     $composite = new CompositeDetectionStrategy([
         $this->firstStrategy,
@@ -57,22 +55,19 @@ test('returns true when second strategy succeeds', function (): void {
 
 test('returns false when all strategies fail', function (): void {
     $this->firstStrategy
-        ->shouldReceive('detect')
-        ->once()
+        ->expects('detect')
         ->with(['config' => 'value'], Platform::Linux)
-        ->andReturn(false);
+        ->returns(false);
 
     $this->secondStrategy
-        ->shouldReceive('detect')
-        ->once()
+        ->expects('detect')
         ->with(['config' => 'value'], Platform::Linux)
-        ->andReturn(false);
+        ->returns(false);
 
     $this->thirdStrategy
-        ->shouldReceive('detect')
-        ->once()
+        ->expects('detect')
         ->with(['config' => 'value'], Platform::Linux)
-        ->andReturn(false);
+        ->returns(false);
 
     $composite = new CompositeDetectionStrategy([
         $this->firstStrategy,
@@ -87,19 +82,17 @@ test('returns false when all strategies fail', function (): void {
 
 test('stops execution after first success', function (): void {
     $this->firstStrategy
-        ->shouldReceive('detect')
-        ->once()
+        ->expects('detect')
         ->with(['paths' => ['test']], Platform::Darwin)
-        ->andReturn(false);
+        ->returns(false);
 
     $this->secondStrategy
-        ->shouldReceive('detect')
-        ->once()
+        ->expects('detect')
         ->with(['paths' => ['test']], Platform::Darwin)
-        ->andReturn(true);
+        ->returns(true);
 
     $this->thirdStrategy
-        ->shouldNotReceive('detect');
+        ->expects('detect')->never();
 
     $composite = new CompositeDetectionStrategy([
         $this->firstStrategy,
@@ -122,10 +115,9 @@ test('handles empty strategies array', function (): void {
 
 test('handles single strategy', function (): void {
     $this->firstStrategy
-        ->shouldReceive('detect')
-        ->once()
+        ->expects('detect')
         ->with(['single' => 'test'], null)
-        ->andReturn(true);
+        ->returns(true);
 
     $composite = new CompositeDetectionStrategy([
         $this->firstStrategy,
@@ -138,16 +130,14 @@ test('handles single strategy', function (): void {
 
 test('passes platform parameter to all strategies', function (): void {
     $this->firstStrategy
-        ->shouldReceive('detect')
-        ->once()
+        ->expects('detect')
         ->with(['config' => 'test'], Platform::Windows)
-        ->andReturn(false);
+        ->returns(false);
 
     $this->secondStrategy
-        ->shouldReceive('detect')
-        ->once()
+        ->expects('detect')
         ->with(['config' => 'test'], Platform::Windows)
-        ->andReturn(false);
+        ->returns(false);
 
     $composite = new CompositeDetectionStrategy([
         $this->firstStrategy,
@@ -161,10 +151,9 @@ test('passes platform parameter to all strategies', function (): void {
 
 test('handles null platform parameter', function (): void {
     $this->firstStrategy
-        ->shouldReceive('detect')
-        ->once()
+        ->expects('detect')
         ->with(['config' => 'test'], null)
-        ->andReturn(true);
+        ->returns(true);
 
     $composite = new CompositeDetectionStrategy([
         $this->firstStrategy,
@@ -180,16 +169,14 @@ test('handles mixed strategy types', function (): void {
     // might be combined (directory, file, command, etc.)
 
     $this->firstStrategy
-        ->shouldReceive('detect')
-        ->once()
+        ->expects('detect')
         ->with(['paths' => ['.vscode']], null)
-        ->andReturn(false);
+        ->returns(false);
 
     $this->secondStrategy
-        ->shouldReceive('detect')
-        ->once()
+        ->expects('detect')
         ->with(['paths' => ['.vscode']], null)
-        ->andReturn(true);
+        ->returns(true);
 
     $composite = new CompositeDetectionStrategy([
         $this->firstStrategy,

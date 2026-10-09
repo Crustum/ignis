@@ -6,10 +6,9 @@ namespace Tests\Unit\Install\Agents;
 
 use Crustum\Ignis\Install\Agents\Kiro;
 use Crustum\Ignis\Install\Detection\DetectionStrategyFactory;
-use Mockery;
 
 beforeEach(function (): void {
-    $this->strategyFactory = Mockery::mock(DetectionStrategyFactory::class);
+    $this->strategyFactory = new DetectionStrategyFactory(freshTestContainer());
 });
 
 test('guidelinesPath returns AGENTS.md by default', function (): void {

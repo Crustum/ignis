@@ -6,17 +6,21 @@ namespace Tests\Unit\Install\Agents;
 
 use Crustum\Ignis\Install\Agents\OpenCode;
 use Crustum\Ignis\Install\Detection\DetectionStrategyFactory;
-use Mockery;
-
+use Crustum\Ignis\Support\ProjectRoot;
 beforeEach(function (): void {
-    $this->strategyFactory = Mockery::mock(DetectionStrategyFactory::class);
+    $this->strategyFactory = new DetectionStrategyFactory(freshTestContainer());
 });
 
-test('projectDetectionConfig checks for both opencode.jsonc and opencode.json', function (): void {
+test('projectDetectionConfig checks root and .opencode config files', function (): void {
     $agent = new OpenCode($this->strategyFactory);
 
     expect($agent->projectDetectionConfig())->toBe([
-        'files' => ['opencode.json', 'opencode.jsonc'],
+        'files' => [
+            'opencode.json',
+            'opencode.jsonc',
+            '.opencode/opencode.json',
+            '.opencode/opencode.jsonc',
+        ],
     ]);
 });
 
@@ -34,9 +38,31 @@ test('detectInProject returns false when only AGENTS.md exists', function (): vo
     }
 });
 
-test('mcpConfigPath prefers opencode.jsonc when it exists', function (): void {
+test('mcpConfigPath prefers .opencode/opencode.jsonc when it exists', function (): void {
     $agent = new OpenCode($this->strategyFactory);
-    $jsoncPath = ROOT . DS . 'opencode.jsonc';
+    $jsoncPath = ProjectRoot::path() . DS . '.opencode' . DS . 'opencode.jsonc';
+
+    mkdir(dirname($jsoncPath), 0777, true);
+    touch($jsoncPath);
+
+    try {
+        expect($agent->mcpConfigPath())->toBe('.opencode/opencode.jsonc');
+    } finally {
+        if (is_file($jsoncPath)) {
+            unlink($jsoncPath);
+        }
+
+        $dir = dirname($jsoncPath);
+
+        if (is_dir($dir) && count(scandir($dir)) <= 2) {
+            rmdir($dir);
+        }
+    }
+});
+
+test('mcpConfigPath prefers opencode.jsonc over opencode.json when it exists', function (): void {
+    $agent = new OpenCode($this->strategyFactory);
+    $jsoncPath = ProjectRoot::path() . DS . 'opencode.jsonc';
 
     touch($jsoncPath);
 
@@ -49,10 +75,10 @@ test('mcpConfigPath prefers opencode.jsonc when it exists', function (): void {
     }
 });
 
-test('mcpConfigPath returns opencode.json when jsonc does not exist', function (): void {
+test('mcpConfigPath defaults to .opencode/opencode.jsonc when no config exists', function (): void {
     $agent = new OpenCode($this->strategyFactory);
 
-    expect($agent->mcpConfigPath())->toBe('opencode.json');
+    expect($agent->mcpConfigPath())->toBe('.opencode/opencode.jsonc');
 });
 
 test('httpMcpServerConfig returns remote type config', function (): void {

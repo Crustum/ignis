@@ -11,6 +11,7 @@ use Crustum\Ignis\Install\SkillComposer;
 use Crustum\Ignis\Rules\RuleRepository;
 use Crustum\Ignis\Support\Config;
 use Crustum\Inspector\ProjectManager;
+use JMac\Testing\Double;
 
 beforeEach(function (): void {
     useTestApp();
@@ -20,7 +21,6 @@ beforeEach(function (): void {
 afterEach(function (): void {
     (new Config())->flush();
     resetTestApp();
-    Mockery::close();
 });
 
 /**
@@ -68,9 +68,9 @@ function buildGuidelineConfigWith(
     $container = freshTestContainer();
     registerTestAgents($container);
     $detector = new AgentsDetector($container, new IgnisManager());
-    $guidelineComposer = Mockery::mock(GuidelineComposer::class);
-    $skillComposer = Mockery::mock(SkillComposer::class);
-    $ruleRepository = Mockery::mock(RuleRepository::class);
+    $guidelineComposer = Double::for(GuidelineComposer::class);
+    $skillComposer = Double::for(SkillComposer::class);
+    $ruleRepository = Double::for(RuleRepository::class);
 
     $command = new BuildGuidelineConfigInstallCommand(
         $detector,
@@ -78,7 +78,7 @@ function buildGuidelineConfigWith(
         $guidelineComposer,
         $skillComposer,
         $ruleRepository,
-        Mockery::mock(ProjectManager::class),
+        Double::for(ProjectManager::class, override: true)->instance(),
     );
     $command->explicitFlagMode = $explicitFlagMode;
     $command->setSelectedIgnisFeaturesForTest($selectedIgnisFeatures);

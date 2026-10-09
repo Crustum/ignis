@@ -17,6 +17,7 @@ use Crustum\Ignis\Install\AgentsDetector;
 use Crustum\Ignis\Install\GuidelineComposer;
 use Crustum\Ignis\Install\GuidelineConfig;
 use Crustum\Ignis\Install\GuidelineWriter;
+use Crustum\Ignis\Install\InstallPath;
 use Crustum\Ignis\Install\McpWriter;
 use Crustum\Ignis\Install\RuleComposer;
 use Crustum\Ignis\Install\Skill;
@@ -26,11 +27,15 @@ use Crustum\Ignis\Install\ThirdPartyPackage;
 use Crustum\Ignis\Rules\RuleRepository;
 use Crustum\Ignis\Support\Config;
 use Crustum\Ignis\Support\ProjectRoot;
+use Crustum\Ignis\Support\RenderFailures;
 use Crustum\Ignis\Trait\ConsolePromptTrait;
+use Crustum\Ignis\Trait\ReportsSkillParseFailuresTrait;
 use Crustum\Inspector\ProjectManager;
 use Exception;
 use Override;
+use Psr\Container\ContainerInterface;
 use RuntimeException;
+use Symfony\Component\Process\Exception\ProcessSignaledException;
 use Symfony\Component\Process\Process;
 use Throwable;
 
@@ -40,6 +45,7 @@ use Throwable;
 class InstallCommand extends Command
 {
     use ConsolePromptTrait;
+    use ReportsSkillParseFailuresTrait;
 
     public const MIN_TEST_COUNT = 6;
 
@@ -136,19 +142,78 @@ class InstallCommand extends Command
      */
     public function execute(Arguments $args, ConsoleIo $io): ?int
     {
+        $this->skillParseFailures()->flush();
         $this->arguments = $args;
         $this->projectName = (string)Configure::read('App.name', 'Application');
 
-        $this->displayIgnisHeader($io, 'Install', $this->projectName);
-        $this->discoverEnvironment();
-        $this->collectInstallationPreferences($args, $io);
-        $this->performInstallation($io);
+        $previousOverride = ProjectRoot::override();
 
-        $this->noteInferConventions($io);
+        try {
+            $installPath = $this->applyInstallPathOption($args, $io);
 
-        $this->outro($io);
+            if ($installPath === false) {
+                return static::CODE_ERROR;
+            }
 
-        return static::CODE_SUCCESS;
+            $this->displayIgnisHeader($io, 'Install', $this->projectName);
+
+            if (is_string($installPath)) {
+                $io->info(sprintf('Writing Ignis assets to [%s]', $installPath));
+            }
+
+            $this->discoverEnvironment();
+            $this->collectInstallationPreferences($args, $io);
+            $this->performInstallation($io);
+
+            $this->reportRenderFailures($io);
+            $this->reportSkillParseFailures($io);
+
+            $this->noteInferConventions($io);
+
+            $this->outro($io);
+
+            return static::CODE_SUCCESS;
+        } finally {
+            ProjectRoot::set($previousOverride);
+        }
+    }
+
+    /**
+     * Apply --path write root and conflict guard. Returns resolved path, null when unused, false on error.
+     *
+     * @param \Cake\Console\Arguments $args Command arguments
+     * @param \Cake\Console\ConsoleIo $io Console IO
+     * @return string|false|null
+     */
+    protected function applyInstallPathOption(Arguments $args, ConsoleIo $io): string|null|false
+    {
+        $pathOption = $args->getOption('path');
+
+        if (in_array($pathOption, [null, false, ''], true)) {
+            return null;
+        }
+
+        try {
+            $resolved = InstallPath::resolve((string)$pathOption);
+        } catch (RuntimeException $runtimeException) {
+            $io->error($runtimeException->getMessage());
+
+            return false;
+        }
+
+        if (!$args->getBooleanOption('force') && InstallPath::hasAiConflict($resolved)) {
+            $io->error(sprintf(
+                'Install path [%s] already contains a [.ai] directory. '
+                . 'Choose an empty target or re-run with --force to overwrite.',
+                $resolved,
+            ));
+
+            return false;
+        }
+
+        ProjectRoot::set($resolved);
+
+        return $resolved;
     }
 
     /**
@@ -211,6 +276,57 @@ class InstallCommand extends Command
     }
 
     /**
+     * Report guidelines that failed to render before the outro.
+     *
+     * @param \Cake\Console\ConsoleIo $io Console IO
+     * @return void
+     */
+    protected function reportRenderFailures(ConsoleIo $io): void
+    {
+        $renderFailures = $this->renderFailures();
+        if ($renderFailures->isEmpty()) {
+            return;
+        }
+
+        $paths = $renderFailures->paths();
+        $packages = $renderFailures->packages();
+
+        $io->out('');
+        $io->warning(sprintf(
+            'Skipped %d %s that could not be rendered:',
+            count($paths),
+            count($paths) === 1 ? 'file' : 'files',
+        ));
+
+        foreach ($paths as $path) {
+            $io->out('  - ' . str_replace(ProjectRoot::path() . DS, '', $path));
+        }
+
+        if ($packages !== []) {
+            $io->warning(
+                'These ship Ignis files built for an older Ignis version, so Ignis used its own where it had them. '
+                . 'Update them with: composer update ' . implode(' ', $packages),
+            );
+        }
+    }
+
+    /**
+     * Return the shared render-failures recorder.
+     *
+     * @return \Crustum\Ignis\Support\RenderFailures
+     */
+    protected function renderFailures(): RenderFailures
+    {
+        $container = Configure::read('app.container');
+
+        if ($container instanceof ContainerInterface && $container->has(RenderFailures::class)) {
+            return $container->get(RenderFailures::class);
+        }
+
+        return new RenderFailures();
+    }
+
+    /**
      * Nudge agents to run the infer-conventions skill after install.
      *
      * @param \Cake\Console\ConsoleIo $io Console IO
@@ -249,14 +365,19 @@ class InstallCommand extends Command
             return (bool)$configured;
         }
 
-        $phpunit = ProjectRoot::path() . DS . 'vendor' . DS . 'bin' . DS . 'phpunit';
+        $phpunit = ProjectRoot::applicationPath() . DS . 'vendor' . DS . 'bin' . DS . 'phpunit';
 
         if (!is_file($phpunit)) {
             return false;
         }
 
-        $process = new Process([PHP_BINARY, $phpunit, '--list-tests'], ProjectRoot::path());
-        $process->run();
+        $process = new Process([PHP_BINARY, $phpunit, '--list-tests'], ProjectRoot::applicationPath());
+
+        try {
+            $process->run();
+        } catch (ProcessSignaledException) {
+            return false;
+        }
 
         $count = 0;
 
@@ -546,8 +667,15 @@ class InstallCommand extends Command
         $skillsAgents = $this->agentsWithSkills();
         $skillsComposer = $this->skillComposer->config($this->buildGuidelineConfig());
         $skills = $skillsComposer->skills();
+        $previouslyTrackedSkills = $this->config->getSkills();
+        $invalidSkillNames = $this->skillParseFailures()->skillNames();
+        $preservedSkillNames = array_values(array_intersect($previouslyTrackedSkills, $invalidSkillNames));
+        $trackedSkillsToSync = array_values(array_diff($previouslyTrackedSkills, $preservedSkillNames));
 
-        $this->installedSkillNames = array_keys($skills->toArray());
+        $this->installedSkillNames = array_values(array_unique([
+            ...array_keys($skills->toArray()),
+            ...$preservedSkillNames,
+        ]));
 
         $this->installFeature(
             io: $io,
@@ -555,12 +683,21 @@ class InstallCommand extends Command
             emptyMessage: 'No agents are selected for skill installation.',
             headerMessage: sprintf('Syncing %d skills for skills-capable agents', $skills->count()),
             nameResolver: fn(Agent $agent): string => $agent->displayName(),
-            processor: function (Agent $agent) use ($skills): array {
+            processor: function (Agent $agent) use ($skills, $trackedSkillsToSync): array {
                 if (!$agent instanceof SupportsSkills) {
                     throw new RuntimeException(sprintf('Agent [%s] does not support skills.', $agent->name()));
                 }
 
-                return (new SkillWriter($agent))->sync($skills, $this->config->getSkills());
+                $results = (new SkillWriter($agent))->sync($skills, $trackedSkillsToSync);
+                $failedSkills = array_keys($results, SkillWriter::FAILED, true);
+
+                $this->installedSkillNames = array_values(array_diff($this->installedSkillNames, $failedSkills));
+
+                if ($failedSkills !== []) {
+                    throw new RuntimeException('Failed to sync skills: ' . implode(', ', $failedSkills));
+                }
+
+                return $results;
             },
             featureName: 'skills',
             beforeProcess: $skills->isEmpty()
@@ -809,6 +946,15 @@ class InstallCommand extends Command
             ])
             ->addOption('mcp', [
                 'help' => 'Install MCP server configuration',
+                'boolean' => true,
+            ])
+            ->addOption('path', [
+                'help' => 'Write guidelines/skills/MCP into this directory (discover packages from the CakePHP application). '
+                    . 'Aborts when the target already has a .ai directory unless --force is set.',
+                'short' => 'p',
+            ])
+            ->addOption('force', [
+                'help' => 'With --path, allow installing into a directory that already contains .ai',
                 'boolean' => true,
             ]);
 

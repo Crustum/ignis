@@ -1,12 +1,10 @@
 # CakePHP Ignis Guidelines
 
-The CakePHP Ignis guidelines are curated for this application. Follow them closely when working in this codebase.
-
 ## Foundational Context
-This application is a CakePHP application running on PHP {{ assist.phpVersion() }}. You are an expert with the CakePHP ecosystem. Always use the APIs that match the installed major version of each package — do not assume a version.
+This application is a CakePHP application running on PHP {{ assist.phpVersion() }}. Always use the APIs that match the installed major version of each package — do not assume a version.
 
 Before relying on a package's API, confirm its installed version:
-- PHP packages: run `composer show --direct` to list direct dependencies with versions, or `composer show <vendor/package>` for a single package.
+- PHP packages: run `{{ assist.composerCommand('show --direct') }}` to list direct dependencies with versions, or `{{ assist.composerCommand('show <vendor/package>') }}` for a single package.
 - JS packages: check `package.json` for the installed versions.
 
 {% if assist.purpose() %}
@@ -31,10 +29,7 @@ This project has domain-specific skills available in `**/skills/**`. Activate th
 - Do not change application dependencies without approval.
 
 ## Frontend Bundling
-- If the user does not see a frontend change reflected in the UI, they may need `{{ assist.nodePackageManagerCommand('run build') }}`, `{{ assist.nodePackageManagerCommand('run dev') }}`, or another project asset command. Ask them.
+- If a frontend change doesn't show in the UI, run `{{ assist.nodePackageManagerCommand('run build') }}` or ask the user to run `{{ assist.nodePackageManagerCommand('run dev') }}` or another project asset command.
 
 ## Documentation Files
 - Create documentation files only when the user explicitly requests them.
-
-## Replies
-- Be concise — focus on what matters rather than explaining obvious details.

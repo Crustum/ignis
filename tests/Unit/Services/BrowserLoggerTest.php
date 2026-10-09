@@ -21,6 +21,13 @@ it('includes browser logger markers and console.debug', function (): void {
     );
 });
 
+it('serializes log arguments without invoking proxy toJSON traps', function (): void {
+    expect(BrowserLogger::getScript())->toContain(
+        'function toSafeValue(value, seen)',
+        'toSafeValue(event.reason, new WeakSet())',
+    );
+});
+
 test('browser logger script captures the configured log levels', function (?array $configuredLevels, array $capturedTypes): void {
     Configure::write('Ignis.browser_log_levels', $configuredLevels);
 

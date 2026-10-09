@@ -125,7 +125,6 @@ class GuidelineComposer
      */
     public function compose(): string
     {
-        // @phpstan-ignore argument.type
         return self::composeGuidelines($this->guidelines());
     }
 
@@ -191,7 +190,6 @@ class GuidelineComposer
     public function resolvedGuidelines(): Collection
     {
         if ($this->guidelines instanceof Collection) {
-            // @phpstan-ignore return.type
             return $this->guidelines;
         }
 
@@ -201,7 +199,6 @@ class GuidelineComposer
             $excluded = [];
         }
 
-        // @phpstan-ignore argument.type
         $base = $this->mergeGuidelineCollections([
             $this->getCoreGuidelines(),
             $this->getConditionalGuidelines(),
@@ -214,10 +211,8 @@ class GuidelineComposer
         $customGuidelines = $this->getUserGuidelines()
             ->filter(fn(array $guideline): bool => !in_array($guideline['path'], $basePaths, true));
 
-        // @phpstan-ignore assign.propertyType
         $this->guidelines = $this->mergeGuidelineCollections([$customGuidelines, $base]);
 
-        // @phpstan-ignore return.type
         return $this->guidelines;
     }
 
@@ -230,11 +225,16 @@ class GuidelineComposer
     {
         $guidelines = [];
 
-        foreach ($this->guidelinesDir($this->customGuidelinePath()) as $guideline) {
-            $guidelines['.ai/' . $guideline['name']] = $guideline;
+        $keyedGuidelines = $this->guidelinesDir(
+            $this->customGuidelinePath(),
+            false,
+            fn(SplFileInfo $file): string => '.ai/' . $this->relativeGuidelineKey($file),
+        );
+
+        foreach ($keyedGuidelines as $key => $guideline) {
+            $guidelines[(string)$key] = $guideline;
         }
 
-        // @phpstan-ignore return.type
         return new Collection($guidelines);
     }
 
@@ -362,7 +362,6 @@ class GuidelineComposer
             }
         }
 
-        // @phpstan-ignore return.type
         return new Collection($guidelines);
     }
 
@@ -385,7 +384,6 @@ class GuidelineComposer
             }
         }
 
-        // @phpstan-ignore return.type
         return new Collection($guidelines);
     }
 
@@ -430,9 +428,18 @@ class GuidelineComposer
     {
         if ($vendorPath !== null) {
             foreach (['.twig', '.md'] as $extension) {
-                if (is_file($vendorPath . $extension)) {
-                    return $this->guideline($vendorPath . $extension, false, $guidelineKey);
+                if (!is_file($vendorPath . $extension)) {
+                    continue;
                 }
+
+                $guideline = $this->guideline($vendorPath . $extension, false, $guidelineKey);
+
+                // A vendor guideline written for an older API fails to render; use ours instead.
+                if (!$this->renderFailures()->failedFor($guideline['path'] ?? $vendorPath . $extension)) {
+                    return $guideline;
+                }
+
+                break;
             }
         }
 
@@ -456,7 +463,6 @@ class GuidelineComposer
         $guidelines = [];
 
         foreach ((new SkillPackDiscovery($this->project))->discoverGuidelines() as $entry) {
-            $root = str_replace('\\', '/', (string)(realpath($entry['guidelinesPath']) ?: $entry['guidelinesPath']));
             $target = $entry['target'];
             $thirdParty = !Composer::isFirstPartyPackage($target);
             $major = $entry['major'];
@@ -464,8 +470,8 @@ class GuidelineComposer
             $keyed = $this->guidelinesDir(
                 $entry['guidelinesPath'],
                 $thirdParty,
-                function (SplFileInfo $file) use ($target, $root, $major): string {
-                    $relative = $this->relativeGuidelineKey($root, $file->getRealPath());
+                function (SplFileInfo $file) use ($target, $major): string {
+                    $relative = $this->relativeGuidelineKey($file);
 
                     if ($major === null) {
                         return $target . '/' . $relative;
@@ -486,7 +492,6 @@ class GuidelineComposer
             }
         }
 
-        // @phpstan-ignore return.type
         return new Collection($guidelines);
     }
 
@@ -500,17 +505,11 @@ class GuidelineComposer
         /** @var array<string, GuidelineEntry> $guidelines */
         $guidelines = [];
 
-        foreach (Composer::packagesDirectoriesWithIgnisGuidelines() as $package => $path) {
-            if (Composer::isFirstPartyPackage($package)) {
-                continue;
-            }
-
-            $root = str_replace('\\', '/', (string)(realpath($path) ?: $path));
-
+        foreach (ThirdPartyPackage::guidelineDirectories($this->project) as $package => $path) {
             $keyed = $this->guidelinesDir(
                 $path,
                 true,
-                fn(SplFileInfo $file): string => $package . '/' . $this->relativeGuidelineKey($root, $file->getRealPath()),
+                fn(SplFileInfo $file): string => $package . '/' . $this->relativeGuidelineKey($file),
             );
 
             foreach ($keyed as $key => $guideline) {
@@ -519,7 +518,6 @@ class GuidelineComposer
         }
 
         if ($this->config->aiGuidelines === null) {
-            // @phpstan-ignore return.type
             return new Collection($guidelines);
         }
 
@@ -532,7 +530,6 @@ class GuidelineComposer
             }
         }
 
-        // @phpstan-ignore return.type
         return new Collection($filtered);
     }
 
@@ -548,21 +545,18 @@ class GuidelineComposer
     }
 
     /**
-     * Relative guideline key under a third-party guidelines root.
+     * Relative guideline key under a guidelines root.
      *
-     * @param string $root Guidelines directory root
-     * @param string $file Absolute guideline file path
+     * @param \Symfony\Component\Finder\SplFileInfo $file Guideline file
      * @return string
      */
-    private function relativeGuidelineKey(string $root, string $file): string
+    private function relativeGuidelineKey(SplFileInfo $file): string
     {
-        $file = str_replace('\\', '/', $file);
-
-        $relative = str_starts_with($file, $root)
-            ? ltrim(substr($file, strlen($root)), '/')
-            : basename($file);
-
-        return (string)preg_replace('/\.(twig|md)$/', '', $relative);
+        return (string)preg_replace(
+            '/\.(twig|md)$/',
+            '',
+            str_replace('\\', '/', $file->getRelativePathname()),
+        );
     }
 
     /**
@@ -820,7 +814,6 @@ class GuidelineComposer
             }
         }
 
-        // @phpstan-ignore return.type
         return new Collection($merged);
     }
 }

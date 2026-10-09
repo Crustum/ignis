@@ -29,9 +29,7 @@ class ToolRegistry
      */
     public static function getAvailableTools(): array
     {
-        if (self::$cachedTools === null) {
-            self::$cachedTools = self::discoverBuiltinTools();
-        }
+        self::$cachedTools ??= self::discoverBuiltinTools();
 
         self::mergeIncludedTools();
 
@@ -112,9 +110,7 @@ class ToolRegistry
      */
     private static function mergeIncludedTools(): void
     {
-        if (self::$cachedTools === null) {
-            self::$cachedTools = [];
-        }
+        self::$cachedTools ??= [];
 
         $excluded = self::excludedTools();
         $included = Configure::read('Ignis.mcp.tools.include', []);

@@ -6,12 +6,13 @@ namespace Crustum\Ignis\Install;
 use Cake\Collection\Collection;
 use Cake\Core\Configure;
 use Crustum\Ignis\Install\Trait\DiscoverPackagePathsTrait;
-use Crustum\Ignis\Support\Composer;
 use Crustum\Ignis\Support\ProjectRoot;
+use Crustum\Ignis\Support\SkillParseFailures;
 use Crustum\Ignis\Trait\RendersTwigGuidelinesTrait;
 use Crustum\Inspector\Package;
 use Crustum\Inspector\ProjectManager;
-use Exception;
+use Psr\Container\ContainerInterface;
+use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -184,31 +185,25 @@ class SkillComposer
      */
     protected function getThirdPartySkills(): Collection
     {
-        $skills = [];
+        $packages = [];
 
-        foreach (Composer::packagesDirectoriesWithIgnisSkills() as $package => $path) {
-            if (Composer::isFirstPartyPackage($package)) {
+        foreach (ThirdPartyPackage::skillDirectories($this->project) as $package => $path) {
+            if ($this->config->aiGuidelines !== null && !in_array($package, $this->config->aiGuidelines, true)) {
                 continue;
             }
 
+            $packages[$package] = $path;
+        }
+
+        $skills = [];
+
+        foreach ($packages as $package => $path) {
             foreach ($this->discoverSkillsFromDirectory($path, $package) as $key => $skill) {
                 $skills[$key] = $skill;
             }
         }
 
-        if ($this->config->aiGuidelines === null) {
-            return new Collection($skills);
-        }
-
-        $filtered = [];
-
-        foreach ($skills as $key => $skill) {
-            if (in_array($skill->package, $this->config->aiGuidelines, true)) {
-                $filtered[$key] = $skill;
-            }
-        }
-
-        return new Collection($filtered);
+        return new Collection($skills);
     }
 
     /**
@@ -348,9 +343,19 @@ class SkillComposer
             return null;
         }
 
-        $frontmatter = $this->parseSkillFrontmatter($content);
+        try {
+            $frontmatter = $this->parseSkillFrontmatter($content);
+        } catch (ParseException $parseException) {
+            $this->skillParseFailures()->record($skillFile, $parseException->getMessage());
+
+            return null;
+        }
 
         if (empty($frontmatter['name']) || empty($frontmatter['description'])) {
+            if ($frontmatter !== []) {
+                $this->skillParseFailures()->record($skillFile, 'The frontmatter must define both [name] and [description].');
+            }
+
             return null;
         }
 
@@ -387,22 +392,31 @@ class SkillComposer
      *
      * @param string $content Skill file content
      * @return array<string, mixed>
+     * @throws \Symfony\Component\Yaml\Exception\ParseException When the frontmatter is present but unusable
      */
     protected function parseSkillFrontmatter(string $content): array
     {
         $content = preg_replace('/^(\s*<!--.*?-->\s*)+/s', '', $content);
 
-        if (!preg_match('/^\s*---\s*\n(.*?)\n---\s*\n/s', (string)$content, $matches)) {
-            return [];
+        if (preg_match('/^\s*---[^\S\r\n]*\R(.*?)\R---[^\S\r\n]*(?:\R|$)/s', (string)$content, $matches)) {
+            $frontmatter = Yaml::parse($matches[1]);
+
+            if ($frontmatter === null) {
+                return [];
+            }
+
+            if (!is_array($frontmatter)) {
+                throw new ParseException('Skill frontmatter must be a YAML mapping.');
+            }
+
+            return $frontmatter;
         }
 
-        try {
-            $parsed = Yaml::parse($matches[1]);
-
-            return is_array($parsed) ? $parsed : [];
-        } catch (Exception) {
-            return [];
+        if (preg_match('/^\s*---[^\S\r\n]*(?:\R|$)/', (string)$content)) {
+            throw new ParseException('The SKILL.md frontmatter has no closing delimiter.');
         }
+
+        return [];
     }
 
     /**
@@ -418,6 +432,22 @@ class SkillComposer
         return preg_match('/^\d+(\.\d+)?$/', $parentDir) === 1
             ? basename(dirname($skillPath, 2))
             : $parentDir;
+    }
+
+    /**
+     * Return the shared skill parse-failures recorder.
+     *
+     * @return \Crustum\Ignis\Support\SkillParseFailures
+     */
+    protected function skillParseFailures(): SkillParseFailures
+    {
+        $container = Configure::read('app.container');
+
+        if ($container instanceof ContainerInterface && $container->has(SkillParseFailures::class)) {
+            return $container->get(SkillParseFailures::class);
+        }
+
+        return new SkillParseFailures();
     }
 
     /**

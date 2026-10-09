@@ -12,20 +12,38 @@ use Crustum\Ignis\Install\Contracts\DetectionStrategy;
 use Crustum\Ignis\Install\Detection\DetectionStrategyFactory;
 use Crustum\Ignis\Install\Enums\McpInstallationStrategy;
 use Crustum\Ignis\Install\Enums\Platform;
-use Mockery;
+use JMac\Testing\Double;
+use JMac\Testing\Matching\Argument;
 
 beforeEach(function (): void {
-    $this->strategyFactory = Mockery::mock(DetectionStrategyFactory::class);
-    $this->strategy = Mockery::mock(DetectionStrategy::class);
+    $this->strategyFactory = Double::for(DetectionStrategyFactory::class);
+    $this->strategy = Double::for(DetectionStrategy::class);
 });
 
 afterEach(function (): void {
     Configure::delete('Ignis.executable_paths.php');
-    Mockery::close();
 });
 
 class TestAgent extends Agent
 {
+    public function __construct(
+        DetectionStrategyFactory $strategyFactory,
+        private readonly McpInstallationStrategy $mcpStrategy = McpInstallationStrategy::FILE,
+        private readonly ?string $shellCommand = null,
+    ) {
+        parent::__construct($strategyFactory);
+    }
+
+    public function mcpInstallationStrategy(): McpInstallationStrategy
+    {
+        return $this->mcpStrategy;
+    }
+
+    public function shellMcpCommand(): ?string
+    {
+        return $this->shellCommand;
+    }
+
     public function name(): string
     {
         return 'test';
@@ -80,16 +98,14 @@ test('detectOnSystem delegates to strategy factory and detection strategy', func
     $config = ['paths' => ['/test/path']];
 
     $this->strategyFactory
-        ->shouldReceive('makeFromConfig')
-        ->once()
+        ->expects('makeFromConfig')
         ->with($config)
-        ->andReturn($this->strategy);
+        ->returns($this->strategy);
 
     $this->strategy
-        ->shouldReceive('detect')
-        ->once()
+        ->expects('detect')
         ->with($config, $platform)
-        ->andReturn(true);
+        ->returns(true);
 
     $environment = new TestAgent($this->strategyFactory);
     $result = $environment->detectOnSystem($platform);
@@ -102,16 +118,14 @@ test('detectInProject merges config with basePath and delegates to strategy', fu
     $mergedConfig = ['files' => ['test.config'], 'basePath' => $basePath];
 
     $this->strategyFactory
-        ->shouldReceive('makeFromConfig')
-        ->once()
+        ->expects('makeFromConfig')
         ->with($mergedConfig)
-        ->andReturn($this->strategy);
+        ->returns($this->strategy);
 
     $this->strategy
-        ->shouldReceive('detect')
-        ->once()
+        ->expects('detect')
         ->with($mergedConfig)
-        ->andReturn(false);
+        ->returns(false);
 
     $environment = new TestAgent($this->strategyFactory);
     $result = $environment->detectInProject($basePath);
@@ -120,16 +134,11 @@ test('detectInProject merges config with basePath and delegates to strategy', fu
 });
 
 test('installMcp uses Shell strategy when configured', function (): void {
-    $environment = Mockery::mock(TestAgent::class, [$this->strategyFactory])->makePartial();
-    $environment->shouldAllowMockingProtectedMethods();
+    $environment = Double::for(TestAgent::class)->passthru(new TestAgent($this->strategyFactory, McpInstallationStrategy::SHELL));
 
-    $environment->shouldReceive('mcpInstallationStrategy')
-        ->andReturn(McpInstallationStrategy::SHELL);
-
-    $environment->shouldReceive('installShellMcp')
-        ->once()
+    $environment->expects('installShellMcp')
         ->with('test-key', 'test-command', ['arg1'], ['ENV' => 'value'])
-        ->andReturn(true);
+        ->returns(true);
 
     $result = $environment->installMcp('test-key', 'test-command', ['arg1'], ['ENV' => 'value']);
 
@@ -137,16 +146,11 @@ test('installMcp uses Shell strategy when configured', function (): void {
 });
 
 test('installMcp uses File strategy when configured', function (): void {
-    $environment = Mockery::mock(TestAgent::class, [$this->strategyFactory])->makePartial();
-    $environment->shouldAllowMockingProtectedMethods();
+    $environment = Double::for(TestAgent::class)->passthru(new TestAgent($this->strategyFactory));
 
-    $environment->shouldReceive('mcpInstallationStrategy')
-        ->andReturn(McpInstallationStrategy::FILE);
-
-    $environment->shouldReceive('installFileMcp')
-        ->once()
+    $environment->expects('installFileMcp')
         ->with('test-key', 'test-command', ['arg1'], ['ENV' => 'value'])
-        ->andReturn(true);
+        ->returns(true);
 
     $result = $environment->installMcp('test-key', 'test-command', ['arg1'], ['ENV' => 'value']);
 
@@ -154,10 +158,7 @@ test('installMcp uses File strategy when configured', function (): void {
 });
 
 test('installMcp returns false for None strategy', function (): void {
-    $environment = Mockery::mock(TestAgent::class, [$this->strategyFactory])->makePartial();
-
-    $environment->shouldReceive('mcpInstallationStrategy')
-        ->andReturn(McpInstallationStrategy::NONE);
+    $environment = new TestAgent($this->strategyFactory, McpInstallationStrategy::NONE);
 
     $result = $environment->installMcp('test-key', 'test-command');
 
@@ -165,13 +166,7 @@ test('installMcp returns false for None strategy', function (): void {
 });
 
 test('installShellMcp returns false when shellMcpCommand is null', function (): void {
-    $environment = Mockery::mock(TestAgent::class, [$this->strategyFactory])->makePartial();
-
-    $environment->shouldReceive('mcpInstallationStrategy')
-        ->andReturn(McpInstallationStrategy::SHELL);
-
-    $environment->shouldReceive('shellMcpCommand')
-        ->andReturn(null);
+    $environment = new TestAgent($this->strategyFactory, McpInstallationStrategy::SHELL);
 
     $result = $environment->installMcp('test-key', 'test-command');
 
@@ -179,21 +174,13 @@ test('installShellMcp returns false when shellMcpCommand is null', function (): 
 });
 
 test('installShellMcp executes command with placeholders replaced', function (): void {
-    $environment = Mockery::mock(TestAgent::class, [$this->strategyFactory])->makePartial();
-    $environment->shouldAllowMockingProtectedMethods();
+    $environment = Double::for(TestAgent::class)->passthru(new TestAgent($this->strategyFactory, McpInstallationStrategy::SHELL, 'install {key} {command} {args} {env}'));
 
-    $environment->shouldReceive('shellMcpCommand')
-        ->andReturn('install {key} {command} {args} {env}');
-
-    $environment->shouldReceive('mcpInstallationStrategy')
-        ->andReturn(McpInstallationStrategy::SHELL);
-
-    $environment->shouldReceive('runShellCommand')
-        ->once()
-        ->with(Mockery::on(fn (string $command): bool => str_contains($command, 'install test-key test-command "arg1" "arg2"')
+    $environment->expects('runShellCommand')
+        ->with(Argument::satisfies(fn (string $command): bool => str_contains($command, 'install test-key test-command "arg1" "arg2"')
             && str_contains($command, '-e ENV1="value1"')
             && str_contains($command, '-e ENV2="value2"')))
-        ->andReturn(['success' => true, 'errorOutput' => '']);
+        ->returns(['success' => true, 'errorOutput' => '']);
 
     $result = $environment->installMcp('test-key', 'test-command', ['arg1', 'arg2'], ['env1' => 'value1', 'env2' => 'value2']);
 
@@ -201,18 +188,10 @@ test('installShellMcp executes command with placeholders replaced', function ():
 });
 
 test('installShellMcp returns true when process fails but has already exists error', function (): void {
-    $environment = Mockery::mock(TestAgent::class, [$this->strategyFactory])->makePartial();
-    $environment->shouldAllowMockingProtectedMethods();
+    $environment = Double::for(TestAgent::class)->passthru(new TestAgent($this->strategyFactory, McpInstallationStrategy::SHELL, 'install {key}'));
 
-    $environment->shouldReceive('shellMcpCommand')
-        ->andReturn('install {key}');
-
-    $environment->shouldReceive('mcpInstallationStrategy')
-        ->andReturn(McpInstallationStrategy::SHELL);
-
-    $environment->shouldReceive('runShellCommand')
-        ->once()
-        ->andReturn(['success' => false, 'errorOutput' => 'Error: already exists']);
+    $environment->expects('runShellCommand')
+        ->returns(['success' => false, 'errorOutput' => 'Error: already exists']);
 
     $result = $environment->installMcp('test-key', 'test-command');
 
@@ -285,6 +264,16 @@ test('getPhpPath maintains default behavior when forceAbsolutePath is false and 
     $environment = new TestAgent($this->strategyFactory);
     expect($environment->getPhpPath(false))->toBe('php');
 });
+
+test('getPhpPath treats a blank configured path as unset', function (mixed $blank): void {
+    Configure::write('Ignis.executable_paths.php', $blank);
+    $environment = new TestAgent($this->strategyFactory);
+    expect($environment->getPhpPath(false))->toBe('php');
+    expect($environment->getPhpPath(true))->toBe(PHP_BINARY);
+})->with([
+    'empty string' => '',
+    'false' => false,
+]);
 
 test('getPhpPath uses configured php path from config', function (): void {
     Configure::write('Ignis.executable_paths.php', '/usr/local/bin/php8.3');
@@ -374,21 +363,13 @@ test('preserves single commands without arguments', function (): void {
 });
 
 test('shell installation handles valet php commands', function (): void {
-    $environment = Mockery::mock(TestAgent::class, [$this->strategyFactory])->makePartial();
-    $environment->shouldAllowMockingProtectedMethods();
+    $environment = Double::for(TestAgent::class)->passthru(new TestAgent($this->strategyFactory, McpInstallationStrategy::SHELL, 'install {key} {command} {args}'));
 
-    $environment->shouldReceive('shellMcpCommand')
-        ->andReturn('install {key} {command} {args}');
-
-    $environment->shouldReceive('mcpInstallationStrategy')
-        ->andReturn(McpInstallationStrategy::SHELL);
-
-    $environment->shouldReceive('runShellCommand')
-        ->once()
-        ->with(Mockery::on(fn (string $command): bool => str_contains($command, 'install test-key valet')
+    $environment->expects('runShellCommand')
+        ->with(Argument::satisfies(fn (string $command): bool => str_contains($command, 'install test-key valet')
             && str_contains($command, '"php"')
             && str_contains($command, '"bin/cake.php"')))
-        ->andReturn(['success' => true, 'errorOutput' => '']);
+        ->returns(['success' => true, 'errorOutput' => '']);
 
     $result = $environment->installMcp('test-key', 'valet php', ['bin/cake.php', 'ignis', 'mcp']);
 
@@ -396,21 +377,13 @@ test('shell installation handles valet php commands', function (): void {
 });
 
 test('shell installation handles herd php commands', function (): void {
-    $environment = Mockery::mock(TestAgent::class, [$this->strategyFactory])->makePartial();
-    $environment->shouldAllowMockingProtectedMethods();
+    $environment = Double::for(TestAgent::class)->passthru(new TestAgent($this->strategyFactory, McpInstallationStrategy::SHELL, 'install {key} {command} {args}'));
 
-    $environment->shouldReceive('shellMcpCommand')
-        ->andReturn('install {key} {command} {args}');
-
-    $environment->shouldReceive('mcpInstallationStrategy')
-        ->andReturn(McpInstallationStrategy::SHELL);
-
-    $environment->shouldReceive('runShellCommand')
-        ->once()
-        ->with(Mockery::on(fn (string $command): bool => str_contains($command, 'install test-key herd')
+    $environment->expects('runShellCommand')
+        ->with(Argument::satisfies(fn (string $command): bool => str_contains($command, 'install test-key herd')
             && str_contains($command, '"php"')
             && str_contains($command, '"bin/cake.php"')))
-        ->andReturn(['success' => true, 'errorOutput' => '']);
+        ->returns(['success' => true, 'errorOutput' => '']);
 
     $result = $environment->installMcp('test-key', 'herd php', ['bin/cake.php', 'ignis', 'mcp']);
 

@@ -8,44 +8,14 @@ use Crustum\Ignis\Install\GuidelineComposer;
 use Crustum\Ignis\Install\GuidelineConfig;
 use Crustum\Ignis\Support\Composer;
 use Crustum\Ignis\Support\DirectoryLink;
+use Crustum\Ignis\Support\FileLink;
 use Crustum\Ignis\Support\Npm;
 use Crustum\Ignis\Support\PackageRegistry;
+use Crustum\Ignis\Support\ProjectRoot;
 use Crustum\Inspector\Enums\JsPackageManager;
-use Crustum\Inspector\Package;
 use Crustum\Inspector\PackageCollection;
 use Crustum\Inspector\ProjectManager;
-
-/**
- * Partial GuidelineComposer that reads user guidelines from a fixture tree.
- *
- * @param \Crustum\Inspector\ProjectManager $project Project manager
- * @param string $fixture Fixture directory under tests/Fixtures
- * @return \Crustum\Ignis\Install\GuidelineComposer
- */
-function guidelineComposerWithFixture(ProjectManager $project, string $fixture): GuidelineComposer
-{
-    $dir = fixture($fixture);
-
-    $composer = Mockery::mock(GuidelineComposer::class, [$project])->makePartial();
-    $composer
-        ->shouldReceive('customGuidelinePath')
-        ->andReturnUsing(fn(string $path = ''): string => $dir . ($path !== '' ? DS . ltrim($path, '/\\') : ''));
-
-    return $composer;
-}
-
-/**
- * Partial GuidelineComposer that can stub first-party vendor guideline paths.
- *
- * @param \Crustum\Inspector\ProjectManager $project Project manager
- * @return \Crustum\Ignis\Install\GuidelineComposer
- */
-function guidelineComposerAllowingVendorPath(ProjectManager $project): GuidelineComposer
-{
-    return Mockery::mock(GuidelineComposer::class, [$project])
-        ->makePartial()
-        ->shouldAllowMockingProtectedMethods();
-}
+use JMac\Testing\Double;
 
 beforeEach(function (): void {
     useTestApp();
@@ -54,8 +24,8 @@ beforeEach(function (): void {
     Configure::delete('Ignis.guidelines.exclude');
     Configure::delete('Ignis.executable_paths.npm');
 
-    $this->project = Mockery::mock(ProjectManager::class);
-    $this->composer = new GuidelineComposer($this->project);
+    $this->project = Double::for(ProjectManager::class, override: true);
+    $this->composer = new GuidelineComposer($this->project->instance());
 });
 
 afterEach(function (): void {
@@ -63,7 +33,6 @@ afterEach(function (): void {
     Configure::delete('Ignis.rules.enabled');
     Configure::delete('Ignis.rules.scoped_guidelines');
     resetTestApp();
-    Mockery::close();
 });
 
 test('includes package guidelines only for installed packages', function (): void {
@@ -175,7 +144,7 @@ test('includes the project rules pointer when rules are enabled and MCP is on', 
 
     expect($guidelines)
         ->toContain('## Project Rules')
-        ->toContain('record-rule');
+        ->toContain('.ai/rules');
 });
 
 test('omits the project rules pointer when rules are disabled', function (): void {
@@ -418,7 +387,9 @@ test('includes user custom guidelines from .ai/guidelines directory', function (
 
     mockProjectPackages($this->project, $packages);
 
-    $composer = guidelineComposerWithFixture($this->project, '.ai/guidelines');
+    ProjectRoot::set(testDirectory('Fixtures'));
+
+    $composer = new GuidelineComposer($this->project->instance());
 
     expect($composer->compose())
         ->toContain('=== .ai/custom-rule rules ===')
@@ -431,6 +402,24 @@ test('includes user custom guidelines from .ai/guidelines directory', function (
         ->toContain('.ai/project-specific');
 });
 
+test('nested user guidelines with the same filename do not overwrite each other', function (): void {
+    $packages = new PackageCollection([
+        inspectorPackage(PackageRegistry::CAKEPHP, '5.0.0'),
+    ]);
+
+    mockProjectPackages($this->project, $packages);
+
+    ProjectRoot::set(fixture('nested-guidelines'));
+
+    $composer = new GuidelineComposer($this->project->instance());
+
+    expect($composer->compose())
+        ->toContain('=== .ai/frontend/api rules ===')
+        ->toContain('=== .ai/backend/api rules ===')
+        ->toContain('Frontend api guideline body')
+        ->toContain('Backend api guideline body');
+});
+
 test('a user override still applies for a package whose bundled core.twig no longer exists', function (): void {
     $packages = new PackageCollection([
         inspectorPackage(PackageRegistry::CAKEPHP, '5.0.0'),
@@ -439,15 +428,15 @@ test('a user override still applies for a package whose bundled core.twig no lon
 
     mockProjectPackages($this->project, $packages);
 
-    $customDir = fixture('.ai/pest-core-override-guidelines');
+    $root = fixture('pest-core-override');
+    $customDir = $root . DS . '.ai' . DS . 'guidelines';
     ensureDirectoryExists($customDir . DS . 'pest');
     file_put_contents($customDir . DS . 'pest' . DS . 'core.twig', "# Custom Pest Override\n\nAlways use this project's own Pest conventions.\n");
 
     try {
-        $composer = Mockery::mock(GuidelineComposer::class, [$this->project])->makePartial();
-        $composer
-            ->shouldReceive('customGuidelinePath')
-            ->andReturnUsing(fn(string $path = ''): string => $customDir . ($path !== '' ? DS . ltrim($path, '/\\') : ''));
+        ProjectRoot::set($root);
+
+        $composer = new GuidelineComposer($this->project->instance());
 
         $guidelines = $composer->guidelines()->toArray();
 
@@ -457,6 +446,8 @@ test('a user override still applies for a package whose bundled core.twig no lon
         @unlink($customDir . DS . 'pest' . DS . 'core.twig');
         @rmdir($customDir . DS . 'pest');
         @rmdir($customDir);
+        @rmdir($root . DS . '.ai');
+        @rmdir($root);
     }
 });
 
@@ -467,7 +458,9 @@ test('non-empty custom guidelines override Ignis guidelines', function (): void 
 
     mockProjectPackages($this->project, $packages);
 
-    $composer = guidelineComposerWithFixture($this->project, '.ai/guidelines');
+    ProjectRoot::set(testDirectory('Fixtures'));
+
+    $composer = new GuidelineComposer($this->project->instance());
     $guidelines = $composer->compose();
     $overrideStringCount = substr_count($guidelines, 'Thanks though, appreciate you');
 
@@ -490,7 +483,10 @@ test('renderContent handles twig and markdown files correctly', function (): voi
     ]);
 
     mockProjectPackages($this->project, $packages);
-    $composer = guidelineComposerWithFixture($this->project, '.ai/guidelines');
+
+    ProjectRoot::set(testDirectory('Fixtures'));
+
+    $composer = new GuidelineComposer($this->project->instance());
 
     $guidelines = $composer->compose();
 
@@ -520,7 +516,9 @@ test('renderContent handles twig and markdown files correctly', function (): voi
 test('the guidelines are in correct order', function (): void {
     Configure::write('Ignis.rules.enabled', false);
 
-    $composer = guidelineComposerWithFixture($this->project, '.ai/guidelines');
+    ProjectRoot::set(testDirectory('Fixtures'));
+
+    $composer = new GuidelineComposer($this->project->instance());
 
     $packages = new PackageCollection([
         inspectorPackage(PackageRegistry::CAKEPHP, '5.0.0'),
@@ -591,7 +589,9 @@ test('user guidelines are sorted by filename for predictable ordering', function
 
     mockProjectPackages($this->project, $packages);
 
-    $composer = guidelineComposerWithFixture($this->project, '.ai/sorted-guidelines');
+    ProjectRoot::set(fixture('sorted-guidelines'));
+
+    $composer = new GuidelineComposer($this->project->instance());
     $keys = array_keys($composer->guidelines()->toArray());
     $userGuidelineKeys = array_values(array_filter(
         $keys,
@@ -624,7 +624,9 @@ test('does not exclude user guidelines via config when using fixture pack', func
 
     mockProjectPackages($this->project, $packages);
 
-    $composer = guidelineComposerWithFixture($this->project, '.ai/guidelines');
+    ProjectRoot::set(testDirectory('Fixtures'));
+
+    $composer = new GuidelineComposer($this->project->instance());
 
     expect($composer->compose())
         ->toContain('=== .ai/custom-rule rules ===')
@@ -634,16 +636,12 @@ test('does not exclude user guidelines via config when using fixture pack', func
 test('loads vendor core guideline when available', function (): void {
     $packages = new PackageCollection([
         inspectorPackage(PackageRegistry::CAKEPHP, '5.0.0'),
-        inspectorPackage(PackageRegistry::PEST, '3.0.0'),
+        inspectorPackage(PackageRegistry::PEST, '3.0.0', path: fixture('vendor-packages/core-only')),
     ]);
 
     mockProjectPackages($this->project, $packages);
 
-    $vendorFixture = realpath(fixture('vendor-guidelines/core-only'));
-
-    $composer = guidelineComposerAllowingVendorPath($this->project);
-    $composer->shouldReceive('resolveFirstPartyIgnisPath')
-        ->andReturnUsing(fn(Package $package, string $subpath): ?string => $package->name() === PackageRegistry::PEST ? $vendorFixture : null);
+    $composer = new GuidelineComposer($this->project->instance());
 
     $guidelines = $composer->compose();
 
@@ -662,8 +660,7 @@ test('falls back to .ai/ when vendor guideline path does not exist', function ()
 
     mockProjectPackages($this->project, $packages);
 
-    $composer = guidelineComposerAllowingVendorPath($this->project);
-    $composer->shouldReceive('resolveFirstPartyIgnisPath')->andReturn(null);
+    $composer = new GuidelineComposer($this->project->instance());
 
     expect($composer->compose())->toContain('=== cakephp/core rules ===');
 });
@@ -671,34 +668,26 @@ test('falls back to .ai/ when vendor guideline path does not exist', function ()
 test('guideline key is unchanged regardless of vendor or .ai/ source', function (): void {
     $packages = new PackageCollection([
         inspectorPackage(PackageRegistry::CAKEPHP, '5.0.0'),
-        inspectorPackage(PackageRegistry::PEST, '3.0.0'),
+        inspectorPackage(PackageRegistry::PEST, '3.0.0', path: fixture('vendor-packages/core-only')),
     ]);
 
     mockProjectPackages($this->project, $packages);
 
-    $vendorFixture = realpath(fixture('vendor-guidelines/core-only'));
-
-    $composer = guidelineComposerAllowingVendorPath($this->project);
-    $composer->shouldReceive('resolveFirstPartyIgnisPath')
-        ->andReturnUsing(fn(Package $package, string $subpath): ?string => $package->name() === PackageRegistry::PEST ? $vendorFixture : null);
+    $composer = new GuidelineComposer($this->project->instance());
 
     expect($composer->used())->toContain('pest/core');
 });
 
 test('user override works with vendor-sourced guideline', function (): void {
     $packages = new PackageCollection([
-        inspectorPackage(PackageRegistry::CAKEPHP, '5.0.0'),
+        inspectorPackage(PackageRegistry::CAKEPHP, '5.0.0', path: fixture('vendor-packages/core-only')),
     ]);
 
     mockProjectPackages($this->project, $packages);
 
-    $vendorFixture = realpath(fixture('vendor-guidelines/core-only'));
+    ProjectRoot::set(testDirectory('Fixtures'));
 
-    $composer = guidelineComposerAllowingVendorPath($this->project);
-    $composer->shouldReceive('customGuidelinePath')
-        ->andReturnUsing(fn(string $path = ''): string => fixture('.ai/guidelines') . ($path !== '' ? DS . ltrim($path, '/\\') : ''));
-    $composer->shouldReceive('resolveFirstPartyIgnisPath')
-        ->andReturnUsing(fn(Package $package, string $subpath): ?string => $package->name() === PackageRegistry::CAKEPHP ? $vendorFixture : null);
+    $composer = new GuidelineComposer($this->project->instance());
 
     $guidelines = $composer->guidelines()->toArray();
     $cakephpCore = $guidelines['cakephp/core'] ?? null;
@@ -724,16 +713,12 @@ test('isFirstPartyPackage identifies scoped npm packages', function (): void {
 test('loads node_modules core guideline for npm first-party packages', function (): void {
     $packages = new PackageCollection([
         inspectorPackage(PackageRegistry::CAKEPHP, '5.0.0'),
-        inspectorPackage('vite', '6.0.0'),
+        inspectorPackage('vite', '6.0.0', path: fixture('vendor-packages/core-only')),
     ]);
 
     mockProjectPackages($this->project, $packages);
 
-    $vendorFixture = realpath(fixture('vendor-guidelines/core-only'));
-
-    $composer = guidelineComposerAllowingVendorPath($this->project);
-    $composer->shouldReceive('resolveFirstPartyIgnisPath')
-        ->andReturnUsing(fn(Package $package, string $subpath): ?string => $package->name() === 'vite' ? $vendorFixture : null);
+    $composer = new GuidelineComposer($this->project->instance());
 
     $guidelines = $composer->compose();
 
@@ -752,8 +737,7 @@ test('falls back to .ai/ when node_modules guideline path does not exist for npm
 
     mockProjectPackages($this->project, $packages);
 
-    $composer = guidelineComposerAllowingVendorPath($this->project);
-    $composer->shouldReceive('resolveFirstPartyIgnisPath')->andReturn(null);
+    $composer = new GuidelineComposer($this->project->instance());
 
     expect($composer->compose())->toContain('=== cakephp/core rules ===');
 });
@@ -761,22 +745,20 @@ test('falls back to .ai/ when node_modules guideline path does not exist for npm
 test('user override resolves .md files for vendor-sourced guidelines', function (): void {
     $packages = new PackageCollection([
         inspectorPackage(PackageRegistry::CAKEPHP, '5.0.0'),
-        inspectorPackage(PackageRegistry::PEST, '3.0.0'),
+        inspectorPackage(PackageRegistry::PEST, '3.0.0', path: fixture('vendor-packages/core-only')),
     ]);
 
     mockProjectPackages($this->project, $packages);
 
-    $vendorFixture = realpath(fixture('vendor-guidelines/core-only'));
-    $mdOverrideDir = fixture('.ai/guidelines-md-override');
+    $root = fixture('md-override');
+    $mdOverrideDir = $root . DS . '.ai' . DS . 'guidelines';
     ensureDirectoryExists($mdOverrideDir . DS . 'pest');
     file_put_contents($mdOverrideDir . DS . 'pest' . DS . 'core.md', '# Pest Markdown Override');
 
     try {
-        $composer = guidelineComposerAllowingVendorPath($this->project);
-        $composer->shouldReceive('resolveFirstPartyIgnisPath')
-            ->andReturnUsing(fn(Package $package, string $subpath): ?string => $package->name() === PackageRegistry::PEST ? $vendorFixture : null);
-        $composer->shouldReceive('customGuidelinePath')
-            ->andReturnUsing(fn(string $path = ''): string => $mdOverrideDir . ($path !== '' ? DS . ltrim($path, '/\\') : ''));
+        ProjectRoot::set($root);
+
+        $composer = new GuidelineComposer($this->project->instance());
 
         $guidelines = $composer->guidelines()->toArray();
         $pestCore = $guidelines['pest/core'] ?? null;
@@ -788,6 +770,8 @@ test('user override resolves .md files for vendor-sourced guidelines', function 
         @unlink($mdOverrideDir . DS . 'pest' . DS . 'core.md');
         @rmdir($mdOverrideDir . DS . 'pest');
         @rmdir($mdOverrideDir);
+        @rmdir($root . DS . '.ai');
+        @rmdir($root);
     }
 });
 
@@ -799,11 +783,14 @@ test('symlinked custom guidelines directory does not produce duplicates', functi
     mockProjectPackages($this->project, $packages);
 
     $realGuidelinesDir = realpath(fixture('.ai/guidelines'));
-    $symlinkDir = fixture('.ai/symlinked-guidelines');
+    $root = fixture('symlinked-guidelines');
+    $symlinkDir = $root . DS . '.ai' . DS . 'guidelines';
 
     if ((is_link($symlinkDir) || DirectoryLink::isLink($symlinkDir)) && !DirectoryLink::remove($symlinkDir)) {
         @unlink($symlinkDir);
     }
+
+    ensureDirectoryExists($root . DS . '.ai');
 
     $linked = DirectoryLink::create($realGuidelinesDir, $symlinkDir) || @symlink($realGuidelinesDir, $symlinkDir);
 
@@ -812,13 +799,12 @@ test('symlinked custom guidelines directory does not produce duplicates', functi
     }
 
     try {
-        $composer = Mockery::mock(GuidelineComposer::class, [$this->project])->makePartial();
-        $composer
-            ->shouldReceive('customGuidelinePath')
-            ->andReturnUsing(fn(string $path = ''): string => $symlinkDir . ($path !== '' ? DS . ltrim($path, '/\\') : ''));
+        ProjectRoot::set($root);
+
+        $composer = new GuidelineComposer($this->project->instance());
 
         $composed = $composer->compose();
-        $overrideCount = substr_count((string)$composed, 'User Override CakePHP Core');
+        $overrideCount = substr_count($composed, 'User Override CakePHP Core');
 
         expect($overrideCount)->toBe(1);
     } finally {
@@ -827,6 +813,9 @@ test('symlinked custom guidelines directory does not produce duplicates', functi
         } elseif (is_link($symlinkDir)) {
             @unlink($symlinkDir);
         }
+
+        @rmdir($root . DS . '.ai');
+        @rmdir($root);
     }
 });
 
@@ -837,34 +826,103 @@ test('symlinked custom guideline file does not produce duplicates', function ():
 
     mockProjectPackages($this->project, $packages);
 
-    $customDir = fixture('.ai/symlinked-file-guidelines');
+    $root = fixture('symlinked-file-guidelines');
+    $customDir = $root . DS . '.ai' . DS . 'guidelines';
     $externalFile = realpath(fixture('.ai/guidelines/cakephp/core.twig'));
     $linkPath = $customDir . DS . 'cakephp' . DS . 'core.twig';
 
     ensureDirectoryExists($customDir . DS . 'cakephp');
 
-    if (is_link($linkPath)) {
+    if ((is_link($linkPath) || FileLink::isLink($linkPath)) && !FileLink::remove($linkPath)) {
         @unlink($linkPath);
     }
 
-    if (!@symlink($externalFile, $linkPath)) {
-        $this->markTestSkipped('Unable to create file symlink for guidelines fixture');
+    if (!FileLink::create($externalFile, $linkPath)) {
+        $this->markTestSkipped('Unable to create file link for guidelines fixture');
     }
 
     try {
-        $composer = Mockery::mock(GuidelineComposer::class, [$this->project])->makePartial();
-        $composer
-            ->shouldReceive('customGuidelinePath')
-            ->andReturnUsing(fn(string $path = ''): string => $customDir . ($path !== '' ? DS . ltrim($path, '/\\') : ''));
+        ProjectRoot::set($root);
+
+        $composer = new GuidelineComposer($this->project->instance());
 
         $composed = $composer->compose();
-        $overrideCount = substr_count((string)$composed, 'User Override CakePHP Core');
+        $overrideCount = substr_count($composed, 'User Override CakePHP Core');
 
         expect($overrideCount)->toBe(1);
     } finally {
-        @unlink($linkPath);
+        if (FileLink::isLink($linkPath)) {
+            FileLink::remove($linkPath);
+        } elseif (is_link($linkPath) || is_file($linkPath)) {
+            @unlink($linkPath);
+        }
+
         @rmdir($customDir . DS . 'cakephp');
         @rmdir($customDir);
+        @rmdir($root . DS . '.ai');
+        @rmdir($root);
+    }
+});
+
+test('symlinked nested user guidelines with the same filename keep distinct keys', function (): void {
+    $packages = new PackageCollection([
+        inspectorPackage(PackageRegistry::CAKEPHP, '5.0.0'),
+    ]);
+
+    mockProjectPackages($this->project, $packages);
+
+    $root = fixture('symlinked-nested-guidelines');
+    $customDir = $root . DS . '.ai' . DS . 'guidelines';
+    $cleanup = function () use ($root, $customDir): void {
+        foreach (['frontend', 'backend'] as $group) {
+            $linkPath = $customDir . DS . $group . DS . 'api.twig';
+
+            if (is_link($linkPath) || is_file($linkPath)) {
+                @unlink($linkPath);
+            }
+
+            if (is_dir($customDir . DS . $group)) {
+                @rmdir($customDir . DS . $group);
+            }
+        }
+
+        if (is_dir($customDir)) {
+            @rmdir($customDir);
+        }
+
+        if (is_dir($root . DS . '.ai')) {
+            @rmdir($root . DS . '.ai');
+        }
+
+        if (is_dir($root)) {
+            @rmdir($root);
+        }
+    };
+
+    $cleanup();
+
+    foreach (['frontend', 'backend'] as $group) {
+        ensureDirectoryExists($customDir . DS . $group);
+
+        if (!FileLink::create(
+            (string)realpath(fixture('nested-guidelines/.ai/guidelines/' . $group . '/api.twig')),
+            $customDir . DS . $group . DS . 'api.twig',
+        )) {
+            $cleanup();
+            $this->markTestSkipped('Unable to create file link for guidelines fixture');
+        }
+    }
+
+    try {
+        ProjectRoot::set($root);
+
+        $composer = new GuidelineComposer($this->project->instance());
+
+        expect($composer->used())
+            ->toContain('.ai/frontend/api')
+            ->toContain('.ai/backend/api');
+    } finally {
+        $cleanup();
     }
 });
 
@@ -979,6 +1037,20 @@ test('cakephp v6 guidelines load for major 6 and omit cakephp v5 content', funct
         ->not->toContain('#[RequestToDto]');
 });
 
+test('versionless packages do not emit a duplicate versioned guideline', function (): void {
+    Configure::write('Ignis.rules.enabled', false);
+
+    $packages = new PackageCollection([
+        inspectorPackage(PackageRegistry::CAKEPHP, ''),
+    ]);
+    mockProjectPackages($this->project, $packages);
+
+    $keys = array_keys($this->composer->resolvedGuidelines()->toArray());
+
+    expect($keys)->toContain('cakephp/core')
+        ->not->toContain('cakephp/v');
+});
+
 test('cakephp v6 path-scoped deltas extract when scoped guidelines are enabled', function (): void {
     Configure::write('Ignis.rules.enabled', true);
     Configure::write('Ignis.rules.scoped_guidelines', true);
@@ -1012,49 +1084,80 @@ test('cakephp v6 path-scoped deltas extract when scoped guidelines are enabled',
         ->toContain('{foo}');
 });
 
-test('php version guidelines accumulate non-empty minors up to the running version', function (): void {
+test('does not fail when a vendor guideline targets an API that no longer exists', function (): void {
     Configure::write('Ignis.rules.enabled', false);
 
     $packages = new PackageCollection([
         inspectorPackage(PackageRegistry::CAKEPHP, '5.0.0'),
+        inspectorPackage(PackageRegistry::PEST, '3.0.0', path: fixture('vendor-packages/incompatible')),
     ]);
+
     mockProjectPackages($this->project, $packages);
 
-    $composer = Mockery::mock(GuidelineComposer::class, [$this->project])
-        ->makePartial()
-        ->shouldAllowMockingProtectedMethods();
-    $composer->shouldReceive('phpVersion')->andReturn('8.4');
+    $vendorFixture = realpath(fixture('vendor-packages/incompatible/resources/ignis/guidelines'));
 
-    $composed = $composer->compose();
+    $composer = new GuidelineComposer($this->project->instance());
 
-    expect($composed)
-        ->toContain('=== php rules ===')
-        ->toContain('=== php/v8.4 rules ===')
-        ->toContain('array_find')
-        ->not->toContain('=== php/v8.5 rules ===')
-        ->not->toContain('array_first');
+    $failures = new Crustum\Ignis\Support\RenderFailures();
+    $container = new Cake\Core\Container();
+    $container->addShared(Crustum\Ignis\Support\RenderFailures::class, fn(): Crustum\Ignis\Support\RenderFailures => $failures);
+    Configure::write('app.container', $container);
+
+    $guidelines = $composer->compose();
+
+    expect($guidelines)
+        ->toContain('=== pest/core rules ===')
+        ->not->toContain('Vendor Core Guideline');
+
+    expect($failures->paths())->toBe([$vendorFixture . DS . 'core.twig']);
 });
 
-test('php 8.5 includes prior non-empty php minor guidelines', function (): void {
+test('discovers third-party npm package guidelines', function (): void {
     Configure::write('Ignis.rules.enabled', false);
 
-    $packages = new PackageCollection([
-        inspectorPackage(PackageRegistry::CAKEPHP, '5.0.0'),
-    ]);
-    mockProjectPackages($this->project, $packages);
+    $path = stageInspectorPackage('@some-scope/third-party', 'guidelines');
+    file_put_contents(
+        $path . DIRECTORY_SEPARATOR . 'resources' . DIRECTORY_SEPARATOR . 'ignis'
+            . DIRECTORY_SEPARATOR . 'guidelines' . DIRECTORY_SEPARATOR . 'core.md',
+        '# Third-Party NPM Guidelines',
+    );
 
-    $composer = Mockery::mock(GuidelineComposer::class, [$this->project])
-        ->makePartial()
-        ->shouldAllowMockingProtectedMethods();
-    $composer->shouldReceive('phpVersion')->andReturn('8.5');
+    try {
+        mockProjectPackages($this->project, new PackageCollection([
+            inspectorPackage(PackageRegistry::CAKEPHP, '5.0.0'),
+            inspectorPackage('@some-scope/third-party', '1.0.0', path: $path)->setDirect(),
+        ]));
 
-    $composed = $composer->compose();
+        $guidelines = $this->composer->guidelines()->toArray();
 
-    expect($composed)
-        ->toContain('=== php/v8.4 rules ===')
-        ->toContain('=== php/v8.5 rules ===')
-        ->toContain('array_find')
-        ->toContain('array_first')
-        ->not->toContain('=== php/v8.2 rules ===')
-        ->not->toContain('=== php/v8.3 rules ===');
+        expect($guidelines)->toHaveKey('@some-scope/third-party/core')
+            ->and($guidelines['@some-scope/third-party/core']['content'])->toContain('Third-Party NPM Guidelines')
+            ->and($guidelines['@some-scope/third-party/core']['third_party'])->toBeTrue();
+    } finally {
+        clearInspectorPackages();
+    }
+});
+
+test('excludes first-party npm packages from third-party guideline discovery', function (): void {
+    Configure::write('Ignis.rules.enabled', false);
+
+    $path = stageInspectorPackage('@crustum/some-package', 'guidelines');
+    file_put_contents(
+        $path . DIRECTORY_SEPARATOR . 'resources' . DIRECTORY_SEPARATOR . 'ignis'
+            . DIRECTORY_SEPARATOR . 'guidelines' . DIRECTORY_SEPARATOR . 'core.md',
+        '# First-Party NPM Guidelines',
+    );
+
+    try {
+        mockProjectPackages($this->project, new PackageCollection([
+            inspectorPackage(PackageRegistry::CAKEPHP, '5.0.0'),
+            inspectorPackage('@crustum/some-package', '1.0.0', path: $path)->setDirect(),
+        ]));
+
+        $guidelines = $this->composer->guidelines()->toArray();
+
+        expect($guidelines)->not->toHaveKey('@crustum/some-package/core');
+    } finally {
+        clearInspectorPackages();
+    }
 });

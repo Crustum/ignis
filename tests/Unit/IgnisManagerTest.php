@@ -24,18 +24,27 @@ it('returns default agents', function (): void {
 
     expect($registered)->toMatchArray([
         'amp' => Amp::class,
-        'junie' => Junie::class,
-        'cursor' => Cursor::class,
+        'antigravity' => Antigravity::class,
         'claude_code' => ClaudeCode::class,
         'codex' => Codex::class,
         'copilot' => Copilot::class,
+        'cursor' => Cursor::class,
         'factory' => Factory::class,
+        'grok_build' => GrokBuild::class,
+        'junie' => Junie::class,
         'kiro' => Kiro::class,
         'opencode' => OpenCode::class,
-        'antigravity' => Antigravity::class,
-        'zed' => Zed::class,
         'pi' => Pi::class,
-        'grok_build' => GrokBuild::class,
+        'zed' => Zed::class,
+    ]);
+});
+
+it('returns agents sorted alphabetically by key', function (): void {
+    $manager = new IgnisManager;
+    $manager->registerAgent('boostbot', ExampleAgent::class);
+
+    expect(array_keys($manager->getAgents()))->toBe([
+        'amp', 'antigravity', 'boostbot', 'claude_code', 'codex', 'copilot', 'cursor', 'factory', 'grok_build', 'junie', 'kiro', 'opencode', 'pi', 'zed',
     ]);
 });
 

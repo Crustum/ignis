@@ -9,10 +9,8 @@ use Crustum\Ignis\Install\Agents\GrokBuild;
 use Crustum\Ignis\Install\Detection\DetectionStrategyFactory;
 use Crustum\Ignis\Install\Enums\McpInstallationStrategy;
 use Crustum\Ignis\Install\Enums\Platform;
-use Mockery;
-
 beforeEach(function (): void {
-    $this->strategyFactory = Mockery::mock(DetectionStrategyFactory::class);
+    $this->strategyFactory = new DetectionStrategyFactory(freshTestContainer());
 });
 
 afterEach(function (): void {

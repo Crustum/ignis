@@ -102,7 +102,7 @@ public function buildRules(RulesChecker $rules): RulesChecker
     $rules->add($rules->isUnique(['email']));
     $rules->add($rules->existsIn('article_id', 'Articles'));
 
-    $rules->add([$this, 'isValidState'], 'validState', [
+    $rules->add($this->isValidState(...), 'validState', [
         'errorField' => 'status',
         'message' => 'This invoice cannot be moved to that status.',
     ]);
@@ -130,3 +130,33 @@ $this->Articles->save($article);
 ```
 
 Check `$entity->getErrors()` after patch/save failures and surface them in the form.
+
+## Keep Mass Assignment Aligned — Never Widen It for Convenience
+
+Validated data is not automatically safe for mass assignment. Keep entity `$_accessible` aligned with the operation, and never add a sensitive attribute to validation merely to make assignment convenient. Validation establishes the shape and values of input; it does not itself authorize the user.
+
+## Check Prerequisites Before Cross-Field Rules
+
+Put multi-field or state-dependent checks in custom validator methods or `buildRules()` callbacks that run after the base rules — and return early when prerequisite fields already failed, so a broken foreign key never triggers an expensive lookup:
+
+```php
+public function buildRules(RulesChecker $rules): RulesChecker
+{
+    $rules->add($this->hasStockForOrder(...), 'stockAvailable', [
+        'errorField' => 'quantity',
+        'message' => 'Not enough stock for this order.',
+    ]);
+
+    return $rules;
+}
+
+public function hasStockForOrder(EntityInterface $order, array $options): bool
+{
+    if ($order->getError('product_id')) {
+        return false;
+    }
+
+    // ... check stock only when product_id itself is valid
+    return true;
+}
+```

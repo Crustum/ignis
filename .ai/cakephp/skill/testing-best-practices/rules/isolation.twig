@@ -1,0 +1,84 @@
+{% set pest = assist.hasPackage('pestphp/pest') %}
+# Fixtures, Mocks, and Determinism
+
+Tests that depend on actual time, randomness, sleeping, or network calls can fail for reasons unrelated to the code under test. Control all four.
+
+## Mock Table Methods and Container Services
+
+Mock a table method with `getMockForModel()` — it avoids the reflected-property issues plain mocks have with tables. Clear the mock in `tearDown()` so later tests get the real table:
+
+```php
+public function testSendingEmails(): void
+{
+    $model = $this->getMockForModel('EmailVerification', ['send']);
+    $model->expects($this->once())
+        ->method('send')
+        ->will($this->returnValue(true));
+
+    $model->verifyEmail('test@example.com');
+}
+
+public function tearDown(): void
+{
+    parent::tearDown();
+    $this->getTableLocator()->clear();
+}
+```
+
+Prefer `mockModel()` when the project uses Mockery doubles. Replace a container-injected service with `$this->mockService(StripeService::class, function () { ... })` — the mock is injected into controllers and commands under test; undo with `$this->removeMockService(StripeService::class)`.
+
+Use a mock only when the real implementation leaves the process or is nondeterministic. Use the real implementation for everything else, including the database.
+
+## Outbound HTTP
+
+Mock HTTP with `HttpClientTrait` so no test reaches the network. Fake the exact endpoint used by each test — a fake without an endpoint accepts unexpected requests and can hide defects:
+
+```php
+use Cake\Http\TestSuite\HttpClientTrait;
+
+class CartControllerTest extends TestCase
+{
+    use HttpClientTrait;
+
+    public function testCheckout(): void
+    {
+        $this->mockClientPost(
+            'https://example.com/process-payment',
+            $this->newClientResponse(200, ['Content-Type: application/json'], json_encode(['ok' => true])),
+        );
+        $this->post('/cart/checkout');
+        $this->assertResponseSuccess();
+    }
+}
+```
+
+## Events and Mail
+
+Assert dispatched events instead of re-testing their listeners' results. Enable tracking on the manager under test, then assert the event and its payload:
+
+```php
+$this->Orders->getEventManager()->setEventList(new EventList());
+$this->assertTrue($this->Orders->place($order));
+$this->assertEventFired('Model.Order.afterPlace', $this->Orders->getEventManager());
+$this->assertEventFiredWith('Model.Order.afterPlace', 'order', $order, $this->Orders->getEventManager());
+```
+
+The global `EventManager` is the default for assertions, so global events need no manager argument. Assert sent mail through the mailer's test transport and captured log output through log testing — one assertion per double, stating what was dispatched or that nothing was.
+
+{% if pest %}
+- Create each double inside the test that needs it. Do not create doubles in a file-level `beforeEach()`.
+{% else %}
+- Create each double inside the test method that needs it. Do not create doubles in `setUp()`.
+{% endif %}
+
+## Time and Randomness
+
+- Freeze or travel the time in each test that depends on a date, a period, or a timestamp, using the time helper the project already uses.
+- Fix generated values (identifiers, slugs) when the test asserts them, instead of asserting randomness.
+- Never call a real sleep in a test. Restore time and randomness after each test, if the suite does not restore them for every test.
+
+## Database
+
+- Run real queries against real fixture rows in the test database. Do not mock the query builder, because the test then asserts the mock.
+- Declare every fixture a test will query via `$fixtures` or `getFixtures()`. Prefer `TransactionStrategy` when tests do not depend on resetting auto-increment between methods.
+- Test application behavior caused by the schema, such as deleting dependent records through a cascade. Do not test the database engine's cascade implementation.

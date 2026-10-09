@@ -22,19 +22,13 @@ pest()->beforeEach(function (): void {
 
 pest()->afterEach(function (): void {
     resetTestApp();
-    Mockery::close();
     resetInstallTestSandbox();
 })->in('Unit/Install');
 
 pest()->afterEach(function (): void {
     Configure::delete('Ignis.github.token');
     Configure::delete('Ignis.hosted.audit_url');
-    Mockery::close();
 })->in('Unit/Skills');
-
-pest()->afterEach(function (): void {
-    Mockery::close();
-})->in('Unit/Trait');
 
 pest()->beforeEach(function (): void {
     useTestApp();
@@ -52,12 +46,10 @@ pest()->afterEach(function (): void {
     resetFeatureDatabaseConnections();
     restoreFeatureDatabaseBootstrapConnections();
     resetTestApp();
-    Mockery::close();
 })->in('Feature/Mcp');
 
 pest()->afterEach(function (): void {
     Configure::delete('Ignis.skills.exclude');
-    Mockery::close();
 })->in('Feature/Install');
 
 pest()->extend(\Crustum\Ignis\Test\TestCase\ConsoleTestCase::class)->in('Feature/Console');
@@ -74,7 +66,6 @@ pest()->afterEach(function (): void {
     Configure::delete('Ignis.github.token');
     ToolRegistry::clearCache();
     resetConsoleProjectRoot();
-    Mockery::close();
 })->in('Feature/Console');
 
 expect()->extend('toBeOne', fn() => $this->toBe(1));

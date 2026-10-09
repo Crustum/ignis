@@ -4,7 +4,7 @@ Book: [Application](https://book.cakephp.org/5/en/development/application.html) 
 
 ## Keep Controllers Thin; Put Domain Work in Services or Tables
 
-Controllers should accept the request, call a Table/service, `set()` view vars, and return a response/redirect. Extract multi-step business operations into services (or rich Table methods) when actions grow.
+Controllers should accept the request, call a Table/service, `set()` view vars, and return a response/redirect. Extract a discrete business operation into an action or service class when doing so makes the operation easier to reuse or test — not to satisfy an arbitrary line limit. An action class has no special meaning to the framework; follow the project's naming and invocation conventions.
 
 ```php
 // src/Controller/OrdersController.php
@@ -18,7 +18,7 @@ public function checkout(PaymentService $payments): void
 
 ## Use Constructor / Action Injection
 
-Register services in `Application::services()` (or a service provider) and type-hint them. Avoid locator/service-locator style lookups inside domain classes when DI already covers the type.
+Register services in `Application::services()` (or a service provider) and type-hint them. Prefer constructor injection for dependencies needed throughout an object's lifetime; action/method injection fits dependencies needed by one action. Avoid locator/service-locator style lookups inside domain classes when DI already covers the type.
 
 Incorrect:
 ```php
@@ -52,7 +52,7 @@ For Tables as constructor dependencies, the DI book documents delegating `TableC
 
 ## Depend on Boundaries You Can Swap
 
-At payment, mail, or external API edges, prefer interfaces (or narrow service classes) so tests can substitute fakes. Bind implementations in `services()`.
+At payment, mail, or external API edges, prefer interfaces (or narrow service classes) when testability or interchangeable implementations justify the abstraction, so tests can substitute fakes. Bind implementations in `services()`.
 
 ```php
 $container->add(EmailService::class)
@@ -89,11 +89,11 @@ Do not query the ORM from templates for primary page data. Do not put HTML gener
 
 ## Order Lists Explicitly
 
-Databases do not guarantee order without `ORDER BY`. Paginated indexes should set `order` in `$paginate` or on the query.
+Databases do not guarantee order without `ORDER BY`. Choose an order that matches the feature, and add a unique tie-breaker when stable pagination matters. Paginated indexes should set `order` in `$paginate` or on the query.
 
 ```php
 protected array $paginate = [
-    'order' => ['Articles.created' => 'DESC'],
+    'order' => ['Articles.created' => 'DESC', 'Articles.id' => 'DESC'],
 ];
 ```
 

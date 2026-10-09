@@ -16,9 +16,22 @@ it('parses valid repository input', function (string $input, string $owner, stri
     'full GitHub URL' => ['https://github.com/owner/repo', 'owner', 'repo', ''],
     'GitHub URL with trailing slash' => ['https://github.com/owner/repo/', 'owner', 'repo', ''],
     'HTTP GitHub URL' => ['http://github.com/owner/repo', 'owner', 'repo', ''],
+    'GitHub SSH URL' => ['git@github.com:owner/repo.git', 'owner', 'repo', ''],
+    'GitHub SSH URL scheme' => ['ssh://git@github.com/owner/repo.git', 'owner', 'repo', ''],
+    'GitHub SSH URL with port' => ['ssh://git@github.com:22/owner/repo.git', 'owner', 'repo', ''],
+    'GitHub SSH URL with leading slash and trailing slash' => ['git@github.com:/owner/repo.git/', 'owner', 'repo', ''],
+    'GitHub SSH URL with path' => ['git@github.com:owner/repo/skills/my-skill', 'owner', 'repo', 'skills/my-skill'],
+    'GitHub HTTPS clone URL' => ['https://github.com/owner/repo.git', 'owner', 'repo', ''],
     'GitHub URL with tree/branch' => ['https://github.com/owner/repo/tree/main/skills', 'owner', 'repo', 'skills'],
     'GitHub URL with tree/branch and nested path' => ['https://github.com/owner/repo/tree/feature-branch/path/to/skills', 'owner', 'repo', 'path/to/skills'],
     'complex branch names in tree URLs' => ['https://github.com/owner/repo/tree/feature/my-branch/skills', 'owner', 'repo', 'my-branch/skills'],
+    'GitHub URL pointing at a skill directory' => ['https://github.com/owner/repo/tree/main/skills/my-skill', 'owner', 'repo', 'skills/my-skill'],
+    'GitHub URL pointing at a SKILL.md file' => ['https://github.com/owner/repo/blob/main/skills/my-skill/SKILL.md', 'owner', 'repo', 'skills/my-skill'],
+    'path with a trailing slash' => ['owner/repo/skills/my-skill/', 'owner', 'repo', 'skills/my-skill'],
+    'path pointing at a SKILL.md file' => ['owner/repo/skills/my-skill/SKILL.md', 'owner', 'repo', 'skills/my-skill'],
+    'repository root SKILL.md' => ['owner/repo/SKILL.md', 'owner', 'repo', ''],
+    'repository named tree' => ['https://github.com/owner/tree/tree/main/skills', 'owner', 'tree', 'skills'],
+    'repository named blob' => ['https://github.com/owner/blob/blob/main/skills/my-skill', 'owner', 'blob', 'skills/my-skill'],
 ]);
 
 it('throws for invalid input', function (string $input, string $message): void {
@@ -30,6 +43,9 @@ it('throws for invalid input', function (string $input, string $message): void {
     'empty repo' => ['owner/', 'Invalid repository format'],
     'GitLab URL' => ['https://gitlab.com/owner/repo', 'Only GitHub URLs are supported'],
     'Bitbucket URL' => ['https://bitbucket.org/owner/repo', 'Only GitHub URLs are supported'],
+    'Bitbucket SSH URL' => ['git@bitbucket.org:owner/repo.git', 'Only GitHub URLs are supported'],
+    'Bitbucket SSH URL scheme' => ['ssh://git@bitbucket.org/owner/repo.git', 'Only GitHub URLs are supported'],
+    'SSH URL with slash in host' => ['git@evil.com/x.github.com:owner/repo', 'Only GitHub URLs are supported'],
 ]);
 
 it('returns full name from fullName method', function (): void {
@@ -43,3 +59,17 @@ it('returns source with path when present', function (): void {
 
     expect($repo->source())->toBe('owner/repo/path/to/skills');
 });
+
+it('keeps the branch named in a GitHub URL', function (string $input, string $branch, string $path): void {
+    $result = GitHubRepository::fromInput($input);
+
+    expect($result->branch)->toBe($branch)
+        ->and($result->path)->toBe($path);
+})->with([
+    'no branch in plain input' => ['owner/repo/skills', '', 'skills'],
+    'no branch in a plain URL' => ['https://github.com/owner/repo', '', ''],
+    'default branch in a tree URL' => ['https://github.com/owner/repo/tree/main/skills', 'main', 'skills'],
+    'other branch in a tree URL' => ['https://github.com/owner/repo/tree/develop/skills/my-skill', 'develop', 'skills/my-skill'],
+    'branch in a blob URL' => ['https://github.com/owner/repo/blob/develop/skills/my-skill/SKILL.md', 'develop', 'skills/my-skill'],
+    'branch with no path after it' => ['https://github.com/owner/repo/tree/develop', 'develop', ''],
+]);

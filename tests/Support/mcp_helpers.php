@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 use Cake\Core\Configure;
 use Cake\Database\Connection;
+use Cake\Database\Driver\Mysql;
+use Cake\Database\Driver\Postgres;
 use Cake\Database\Driver\Sqlite;
 use Cake\Database\StatementInterface;
 use Cake\Datasource\ConnectionManager;
@@ -17,6 +19,7 @@ use Crustum\Mcp\Schema\Implementation;
 use Crustum\Mcp\Server\ServerContext;
 use Crustum\Mcp\Server\Tool;
 use Crustum\Mcp\Transport\JsonRpcRequest;
+use JMac\Testing\Double;
 
 if (!function_exists('toolResponseText')) {
     /**
@@ -389,9 +392,10 @@ if (!function_exists('registerMockFeatureDatabaseConnection')) {
      *
      * @param string $prefix Table prefix
      * @param array<int, string>|null $expectedQueries Expected SQL statements in order
+     * @param class-string<\Cake\Database\Driver> $driverClass Driver backing read-only enforcement
      * @return void
      */
-    function registerMockFeatureDatabaseConnection(string $prefix = '', ?array $expectedQueries = null): void
+    function registerMockFeatureDatabaseConnection(string $prefix = '', ?array $expectedQueries = null, string $driverClass = Sqlite::class): void
     {
         if (array_key_exists('default', ConnectionManager::aliases())) {
             ConnectionManager::dropAlias('default');
@@ -403,23 +407,36 @@ if (!function_exists('registerMockFeatureDatabaseConnection')) {
             }
         }
 
-        ConnectionManager::setConfig('default', function () use ($prefix, $expectedQueries): Connection {
-            $statement = Mockery::mock(StatementInterface::class);
-            $statement->shouldReceive('fetchAll')->with('assoc')->andReturn([]);
+        ConnectionManager::setConfig('default', function () use ($prefix, $expectedQueries, $driverClass): Connection {
+            $statement = Double::for(StatementInterface::class);
+            $statement->allows('fetchAll')->with('assoc')->returns([]);
 
-            $connection = Mockery::mock(Connection::class);
-            $connection->shouldReceive('config')->andReturn(['prefix' => $prefix]);
+            $connection = Double::for(Connection::class);
+            $connection->allows('config')->returns(['prefix' => $prefix]);
+            $connection->allows('getDriver')->returns(Double::for($driverClass));
+            $connection->allows('begin');
+            $connection->allows('rollback')->returns(true);
 
             if ($expectedQueries === null) {
-                $connection->shouldReceive('execute')->andReturn($statement);
+                $connection->allows('execute')->returns($statement);
 
                 return $connection;
             }
 
-            $expectation = $connection->shouldReceive('execute');
+            $setupStatements = match ($driverClass) {
+                Mysql::class => ['SET TRANSACTION READ ONLY'],
+                Postgres::class => ['SET TRANSACTION READ ONLY'],
+                Sqlite::class => ['PRAGMA query_only = ON'],
+                default => [],
+            };
 
-            foreach ($expectedQueries as $expectedQuery) {
-                $expectation = $expectation->once()->with($expectedQuery)->andReturn($statement);
+            $teardownStatements = match ($driverClass) {
+                Sqlite::class => ['PRAGMA query_only = OFF'],
+                default => [],
+            };
+
+            foreach ([...$setupStatements, ...$expectedQueries, ...$teardownStatements] as $sql) {
+                $connection->expects('execute')->with($sql)->returns($statement);
             }
 
             return $connection;

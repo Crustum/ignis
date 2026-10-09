@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use Cake\Collection\Collection;
-use Crustum\Ignis\Contracts\SupportsSkills;
 use Crustum\Ignis\Install\GuidelineAssist;
 use Crustum\Ignis\Install\GuidelineConfig;
 use Crustum\Ignis\Install\Skill;
@@ -11,6 +10,7 @@ use Crustum\Ignis\Install\SkillWriter;
 use Crustum\Ignis\Support\DirectoryLink;
 use Crustum\Ignis\Support\PackageRegistry;
 use Crustum\Ignis\Support\ProjectRoot;
+use Crustum\Ignis\Test\Fixtures\FakeAgent;
 use Crustum\Ignis\Test\Fixtures\StubGuidelineAssistSkillWriter;
 use Crustum\Inspector\Enums\PackageSource;
 use Crustum\Inspector\Ecosystems\Ecosystem;
@@ -18,6 +18,8 @@ use Crustum\Inspector\Ecosystems\JsEcosystem;
 use Crustum\Inspector\Package;
 use Crustum\Inspector\PackageCollection;
 use Crustum\Inspector\ProjectManager;
+use JMac\Testing\Double;
+use Symfony\Component\Process\Process;
 
 /**
  * Write the shipped infer-conventions skill using a fixed GuidelineAssist.
@@ -28,8 +30,7 @@ use Crustum\Inspector\ProjectManager;
  */
 function writeInferConventions(string $relativeTarget, GuidelineAssist $assist): int
 {
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: 'infer-conventions',
@@ -49,23 +50,23 @@ function writeInferConventions(string $relativeTarget, GuidelineAssist $assist):
  */
 function mockSkillWriterProject(array $packages): ProjectManager
 {
-    $project = Mockery::mock(ProjectManager::class);
-    $php = Mockery::mock(Ecosystem::class);
-    $js = Mockery::mock(JsEcosystem::class);
+    $project = Double::for(ProjectManager::class, override: true);
+    $php = Double::for(Ecosystem::class);
+    $js = Double::for(JsEcosystem::class);
 
-    $project->shouldReceive('php')->andReturn($php);
-    $project->shouldReceive('js')->andReturn($js);
-    $php->shouldReceive('packages')->andReturn(new PackageCollection($packages));
-    $js->shouldReceive('packages')->andReturn(new PackageCollection([]));
-    $php->shouldReceive('uses')->andReturnUsing(
+    $project->allows('php')->returns($php);
+    $project->allows('js')->returns($js);
+    $php->allows('packages')->returns(new PackageCollection($packages));
+    $js->allows('packages')->returns(new PackageCollection([]));
+    $php->allows('uses')->resolves(
         fn(string $name, ?string $constraint = null): bool => array_any(
             $packages,
             fn(Package $package): bool => $package->name() === $name,
         ),
     );
-    $js->shouldReceive('uses')->andReturn(false);
+    $js->allows('uses')->returns(false);
 
-    return $project;
+    return $project->instance();
 }
 
 it('installs the shipped infer-conventions skill with its references', function (): void {
@@ -73,8 +74,7 @@ it('installs the shipped infer-conventions skill with its references', function 
     $relativeTarget = '.ignis-test-skills-' . uniqid();
     $absoluteTarget = skillRootPath($relativeTarget);
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: 'infer-conventions',
@@ -146,8 +146,7 @@ it('writes skill to a target directory', function (): void {
     $absoluteTarget = skillRootPath($relativeTarget);
     $canonicalSkillPath = skillRootPath('.ai/skills/markdown-skill');
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: 'markdown-skill',
@@ -181,8 +180,7 @@ it('updates existing canonical skills when installing non-custom skills', functi
 
     file_put_contents($canonicalSkillPath.'/SKILL.md', 'old content');
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: $skillName,
@@ -216,8 +214,7 @@ it('symlinks skills to the canonical directory', function (): void {
 
     copy(fixture('skills/markdown-skill/SKILL.md'), $canonicalSkillPath.'/SKILL.md');
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: $skillName,
@@ -254,8 +251,7 @@ it('does not delete canonical skills when removing symlink', function (): void {
 
     copy(fixture('skills/markdown-skill/SKILL.md'), $canonicalSkillPath.'/SKILL.md');
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: $skillName,
@@ -291,8 +287,7 @@ it('returns UPDATED when skill directory already exists', function (): void {
     mkdir($targetSkill, 0755, true);
     file_put_contents($targetSkill.'/SKILL.md', 'old content');
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: 'markdown-skill',
@@ -315,8 +310,7 @@ it('returns UPDATED when skill directory already exists', function (): void {
 it('returns FAILED when source directory does not exist', function (): void {
     $relativeTarget = '.ignis-test-skills-'.uniqid();
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: 'missing-skill',
@@ -336,8 +330,7 @@ it('writes all skills', function (): void {
     $relativeTarget = '.ignis-test-skills-'.uniqid();
     $absoluteTarget = skillRootPath($relativeTarget);
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skills = new Collection([
         'skill-one' => new Skill('skill-one', 'ignis', $sourceDir, 'First skill'),
@@ -359,8 +352,7 @@ it('copies nested directory structure', function (): void {
     $relativeTarget = '.ignis-test-skills-'.uniqid();
     $absoluteTarget = skillRootPath($relativeTarget);
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: 'markdown-nested-skill',
@@ -384,8 +376,7 @@ it('throws an exception for path traversal in skill name', function (string $mal
     $sourceDir = fixture('skills/markdown-skill');
     $relativeTarget = '.ignis-test-skills-'.uniqid();
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: $maliciousName,
@@ -411,8 +402,7 @@ it('renders twig templates to markdown', function (): void {
     $relativeTarget = '.ignis-test-skills-'.uniqid();
     $absoluteTarget = skillRootPath($relativeTarget);
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: 'twig-skill',
@@ -440,8 +430,7 @@ it('writes skills that combine markdown and twig source files', function (): voi
     $relativeTarget = '.ignis-test-skills-'.uniqid();
     $absoluteTarget = skillRootPath($relativeTarget);
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: 'mixed-skill',
@@ -473,8 +462,7 @@ it('preserves vue template syntax in verbatim blocks when rendering twig skills'
     $relativeTarget = '.ignis-test-skills-'.uniqid();
     $absoluteTarget = skillRootPath($relativeTarget);
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: 'twig-verbatim-skill',
@@ -508,8 +496,7 @@ it('removes a skill directory', function (): void {
     mkdir($skillDir, 0755, true);
     file_put_contents($skillDir.'/SKILL.md', 'test content');
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $writer = new SkillWriter($agent);
     $result = $writer->remove('markdown-skill');
@@ -523,8 +510,7 @@ it('removes a skill directory', function (): void {
 it('returns true when removing a non-existent skill', function (): void {
     $relativeTarget = '.ignis-test-skills-'.uniqid();
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $writer = new SkillWriter($agent);
     $result = $writer->remove('nonexistent-skill');
@@ -535,13 +521,14 @@ it('returns true when removing a non-existent skill', function (): void {
 it('returns false when removing skill with invalid name', function (): void {
     $relativeTarget = '.ignis-test-skills-'.uniqid();
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $writer = new SkillWriter($agent);
 
     expect($writer->remove('../malicious'))->toBeFalse()
-        ->and($writer->remove('skill/with/slash'))->toBeFalse();
+        ->and($writer->remove('skill/with/slash'))->toBeFalse()
+        ->and($writer->remove('.'))->toBeFalse()
+        ->and($writer->remove('. .'))->toBeFalse();
 });
 
 it('removes multiple stale skills', function (): void {
@@ -560,8 +547,7 @@ it('removes multiple stale skills', function (): void {
     file_put_contents($skillTwoDir.'/SKILL.md', 'skill two');
     file_put_contents($skillThreeDir.'/SKILL.md', 'skill three');
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $writer = new SkillWriter($agent);
     $results = $writer->removeStale(['skill-one', 'skill-two']);
@@ -586,8 +572,7 @@ it('removes nested skill directory with deep structure', function (): void {
     file_put_contents($skillDir.'/SKILL.md', 'test');
     file_put_contents($deepDir.'/file.md', 'nested content');
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $writer = new SkillWriter($agent);
     $result = $writer->remove('markdown-nested-skill');
@@ -607,8 +592,7 @@ it('syncs skills by writing new and removing stale', function (): void {
     mkdir($staleSkillDir, 0755, true);
     file_put_contents($staleSkillDir.'/SKILL.md', 'stale content');
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skills = new Collection([
         'new-skill' => new Skill('new-skill', 'ignis', $sourceDir, 'New skill'),
@@ -634,8 +618,7 @@ it('sync preserves skills that exist in both source and target', function (): vo
     mkdir($existingSkillDir, 0755, true);
     file_put_contents($existingSkillDir.'/SKILL.md', 'old content');
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skills = new Collection([
         'existing-skill' => new Skill('existing-skill', 'ignis', $sourceDir, 'Existing skill'),
@@ -665,8 +648,7 @@ it('sync preserves user-created custom skills that were never tracked', function
     file_put_contents($trackedSkillDir.'/SKILL.md', 'tracked content');
     file_put_contents($customSkillDir.'/SKILL.md', 'custom content');
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skills = new Collection([
         'new-skill' => new Skill('new-skill', 'ignis', $sourceDir, 'New skill'),
@@ -700,8 +682,7 @@ it('sync only removes previously tracked skills', function (): void {
     file_put_contents($trackedTwoDir.'/SKILL.md', 'tracked two');
     file_put_contents($untrackedDir.'/SKILL.md', 'untracked');
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skills = new Collection([
         'tracked-one' => new Skill('tracked-one', 'ignis', $sourceDir, 'Tracked one'),
@@ -733,8 +714,7 @@ it('removes directory containing nested symlinks', function (): void {
     $symlinkPath = $nestedDir.'/linked-dir';
     expect(DirectoryLink::create($linkTargetDir, $symlinkPath))->toBeTrue();
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $writer = new SkillWriter($agent);
     $result = $writer->remove('symlink-skill');
@@ -756,8 +736,7 @@ it('creates canonical directory and symlinks custom skill when canonical does no
     $skillName = 'test-skill-'.uniqid();
     $canonicalSkillPath = skillRootPath('.ai/skills/'.$skillName);
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: $skillName,
@@ -800,8 +779,7 @@ it('handles dangling symlink at target path', function (): void {
 
     expect(DirectoryLink::isLink($linkedPath))->toBeTrue();
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: $skillName,
@@ -830,8 +808,7 @@ it('transitions from non-custom directory to custom symlink', function (): void 
     $canonicalSkillPath = skillRootPath('.ai/skills/'.$skillName);
     $targetPath = $absoluteTarget.'/'.$skillName;
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $nonCustomSkill = new Skill(
         name: $skillName,
@@ -874,8 +851,7 @@ it('transitions from custom symlink to non-custom directory', function (): void 
     $canonicalSkillPath = skillRootPath('.ai/skills/'.$skillName);
     $targetPath = $absoluteTarget.'/'.$skillName;
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $customSkill = new Skill(
         name: $skillName,
@@ -915,8 +891,7 @@ it('preserves canonical directory when removing custom skill symlink via removeS
     $skillName = 'test-skill-'.uniqid();
     $canonicalSkillPath = skillRootPath('.ai/skills/'.$skillName);
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: $skillName,
@@ -953,8 +928,7 @@ it('compiles twig to markdown instead of symlinking when custom skill source is 
     copy(fixture('skills/twig-skill/SKILL.twig'), $canonicalSkillPath.'/SKILL.twig');
     copy(fixture('skills/twig-skill/references/ref.twig'), $canonicalSkillPath.'/references/ref.twig');
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: $skillName,
@@ -999,8 +973,7 @@ it('replaces existing custom skill symlink when canonical skill contains root tw
 
     expect(DirectoryLink::create($canonicalSkillPath, $targetSkillPath))->toBeTrue();
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: $skillName,
@@ -1043,8 +1016,7 @@ it('replaces existing custom skill symlink when canonical skill only contains ne
 
     expect(DirectoryLink::create($canonicalSkillPath, $targetSkillPath))->toBeTrue();
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: $skillName,
@@ -1084,8 +1056,7 @@ it('removes extra files when updating skill directory', function (): void {
     file_put_contents($targetSkill.'/extra-file.md', 'should be removed');
     file_put_contents($targetSkill.'/references/old/nested.md', 'should also be removed');
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: 'markdown-skill',
@@ -1113,7 +1084,7 @@ it('computes correct relative path when target is outside project directory', fu
     ensureDirectoryExists($nestedProjectRoot);
     ensureDirectoryExists($outsideDir);
 
-    $agent = Mockery::mock(SupportsSkills::class);
+    $agent = new FakeAgent();
     $writer = new SkillWriter($agent);
 
     $reflection = new ReflectionMethod($writer, 'relativePath');
@@ -1147,8 +1118,7 @@ it('creates relative symlink when skills path is outside the project root', func
         mkdir($canonicalSkillPath, 0755, true);
         copy(fixture('skills/markdown-skill/SKILL.md'), $canonicalSkillPath . '/SKILL.md');
 
-        $agent = Mockery::mock(SupportsSkills::class);
-        $agent->shouldReceive('skillsPath')->andReturn($relativeOutsidePath);
+        $agent = new FakeAgent($relativeOutsidePath);
 
         $skill = new Skill(
             name: $skillName,
@@ -1187,8 +1157,7 @@ it('writes skill files with a trailing newline', function (): void {
     $relativeTarget = '.ignis-test-skills-'.uniqid();
     $absoluteTarget = skillRootPath($relativeTarget);
 
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn($relativeTarget);
+    $agent = new FakeAgent($relativeTarget);
 
     $skill = new Skill(
         name: 'markdown-skill',
@@ -1207,8 +1176,7 @@ it('writes skill files with a trailing newline', function (): void {
 });
 
 it('preserves unix absolute project roots when resolving skill paths', function (): void {
-    $agent = Mockery::mock(SupportsSkills::class);
-    $agent->shouldReceive('skillsPath')->andReturn('.ignis-test-skills');
+    $agent = new FakeAgent('.ignis-test-skills');
 
     $writer = new class ($agent) extends SkillWriter {
         /**
@@ -1235,3 +1203,100 @@ it('preserves unix absolute project roots when resolving skill paths', function 
     expect($resolved)->toBe($expected)
         ->and($resolved)->toStartWith('/');
 });
+
+it('never deletes a skills directory when a skill is named .', function (): void {
+    $relativeTarget = '.ignis-test-skills-' . uniqid();
+    $absoluteTarget = skillRootPath($relativeTarget);
+    $canonicalTarget = skillRootPath('.ai/skills');
+
+    mkdir($absoluteTarget . '/keep-me', 0755, true);
+    file_put_contents($absoluteTarget . '/keep-me/SKILL.md', 'keep me');
+    mkdir($canonicalTarget . '/keep-me-too', 0755, true);
+    file_put_contents($canonicalTarget . '/keep-me-too/SKILL.md', 'keep me too');
+
+    $agent = new FakeAgent($relativeTarget);
+
+    $writer = new SkillWriter($agent);
+    $skill = new Skill(
+        name: '.',
+        package: 'ignis',
+        path: fixture('skills/twig-skill'),
+        description: 'Malicious skill',
+    );
+
+    try {
+        expect(fn (): int => $writer->write($skill))->toThrow(RuntimeException::class, 'Invalid skill name')
+            ->and(file_get_contents($absoluteTarget . '/keep-me/SKILL.md'))->toBe('keep me')
+            ->and(file_get_contents($canonicalTarget . '/keep-me-too/SKILL.md'))->toBe('keep me too')
+            ->and($writer->removeStale(['.']))->toBe(['.' => false]);
+    } finally {
+        cleanupSkillDirectory($absoluteTarget);
+        cleanupSkillDirectory($canonicalTarget . '/keep-me-too');
+    }
+});
+
+it('still syncs the valid skills when one skill name is invalid', function (): void {
+    $relativeTarget = '.ignis-test-skills-' . uniqid();
+    $absoluteTarget = skillRootPath($relativeTarget);
+
+    mkdir($absoluteTarget . '/stale-skill', 0755, true);
+    file_put_contents($absoluteTarget . '/stale-skill/SKILL.md', 'stale');
+
+    $agent = new FakeAgent($relativeTarget);
+
+    $skills = new Collection([
+        '.' => new Skill(name: '.', package: 'ignis', path: fixture('skills/twig-skill'), description: 'Malicious skill'),
+        'test-skill' => new Skill(name: 'test-skill', package: 'ignis', path: fixture('skills/twig-skill'), description: 'Test skill'),
+    ]);
+
+    try {
+        expect(fn (): array => (new SkillWriter($agent))->sync($skills, ['stale-skill']))
+            ->toThrow(RuntimeException::class, 'Invalid skill name: .')
+            ->and($absoluteTarget . '/test-skill/SKILL.md')->toBeFile()
+            ->and($absoluteTarget . '/stale-skill')->not->toBeDirectory();
+    } finally {
+        cleanupSkillDirectory($absoluteTarget);
+    }
+});
+
+it('preserves executable scripts without making other skill files executable', function (int $mask, int $scriptMode, int $dataMode): void {
+    $source = testAppTmpPath('ignis-executable-skill-' . uniqid());
+    $relativeTarget = 'tmp/ignis-test-skills-' . uniqid();
+    $absoluteTarget = skillRootPath($relativeTarget);
+    mkdir($source . '/scripts', 0777, true);
+    file_put_contents($source . '/SKILL.md', "---\nname: executable-skill\ndescription: Run a bundled script.\n---\n\nRun scripts/check.sh.\n");
+    file_put_contents($source . '/scripts/check.sh', "#!/bin/sh\nprintf 'skill-script-ok\\n'\n");
+    file_put_contents($source . '/scripts/data.json', '{}');
+    chmod($source . '/scripts/check.sh', 0755);
+    chmod($source . '/scripts/data.json', 0644);
+
+    $agent = new FakeAgent($relativeTarget);
+    $skill = new Skill(name: 'executable-skill', package: 'example/package', path: $source, description: 'Run a bundled script.');
+    $writer = new SkillWriter($agent);
+    $previousUmask = umask($mask);
+
+    try {
+        expect($writer->write($skill))->toBe(SkillWriter::SUCCESS)
+            ->and(is_executable($absoluteTarget . '/executable-skill/scripts/check.sh'))->toBeTrue()
+            ->and(is_executable($absoluteTarget . '/executable-skill/scripts/data.json'))->toBeFalse()
+            ->and(is_executable($absoluteTarget . '/executable-skill/SKILL.md'))->toBeFalse()
+            ->and(fileperms($absoluteTarget . '/executable-skill/scripts/check.sh') & 0777)->toBe($scriptMode)
+            ->and(fileperms($absoluteTarget . '/executable-skill/scripts/data.json') & 0777)->toBe($dataMode);
+
+        $process = new Process([$absoluteTarget . '/executable-skill/scripts/check.sh']);
+        $process->mustRun();
+        expect($process->getOutput())->toBe("skill-script-ok\n");
+
+        chmod($source . '/scripts/check.sh', 0644);
+        expect($writer->write($skill))->toBe(SkillWriter::UPDATED);
+        clearstatcache(true, $absoluteTarget . '/executable-skill/scripts/check.sh');
+        expect(is_executable($absoluteTarget . '/executable-skill/scripts/check.sh'))->toBeFalse();
+    } finally {
+        umask($previousUmask);
+        cleanupSkillDirectory($source);
+        cleanupSkillDirectory($absoluteTarget);
+    }
+})->with([
+    '0022 umask' => [0022, 0755, 0644],
+    '0077 umask' => [0077, 0700, 0600],
+])->skipOnWindows();

@@ -77,11 +77,11 @@ class FileWriter
     {
         $this->ensureDirectoryExists();
 
-        if ($this->shouldWriteNew()) {
+        $content = is_file($this->filePath) ? $this->normalizeContent($this->readFile()) : '';
+
+        if ($content === '' || $content === '{}') {
             return $this->createNewFile();
         }
-
-        $content = $this->readFile();
 
         if ($this->isPlainJson($content)) {
             return $this->updatePlainJsonFile($content);
@@ -104,7 +104,7 @@ class FileWriter
     {
         $config = json_decode($content);
 
-        if (json_last_error() !== JSON_ERROR_NONE) {
+        if (json_last_error() !== JSON_ERROR_NONE || !is_object($config)) {
             return false;
         }
 
@@ -121,44 +121,53 @@ class FileWriter
      */
     protected function updateJson5File(string $content): bool
     {
-        $configKeyPattern = '/["\']' . preg_quote($this->configKey, '/') . '["\']\\s*:\\s*\\{/';
+        $masked = $this->maskUnquotedComments($content);
 
-        if (preg_match($configKeyPattern, $content, $matches, PREG_OFFSET_CAPTURE)) {
-            return $this->injectIntoExistingConfigKey($content, $matches);
+        if (!str_starts_with(ltrim($masked), '{')) {
+            return false;
         }
 
-        return $this->injectNewConfigKey($content);
+        $quotedConfigKey = '["\']' . preg_quote($this->configKey, '/') . '["\']';
+        $unquotedConfigKey = '(?<=^|\\s|,|{)' . preg_quote($this->configKey, '/');
+        $configKeyPattern = '/(?:' . $quotedConfigKey . '|' . $unquotedConfigKey . ')\\s*:\\s*\\{/m';
+
+        if (preg_match($configKeyPattern, $masked, $matches, PREG_OFFSET_CAPTURE)) {
+            return $this->injectIntoExistingConfigKey($content, $masked, $matches);
+        }
+
+        return $this->injectNewConfigKey($content, $masked);
     }
 
     /**
      * Inject servers into an existing configuration key block.
      *
      * @param string $content Existing file contents
+     * @param string $masked Contents with comments blanked out (same offsets)
      * @param array<int, array<int, int|string>> $matches Regex match offsets
      * @return bool
      */
-    protected function injectIntoExistingConfigKey(string $content, array $matches): bool
+    protected function injectIntoExistingConfigKey(string $content, string $masked, array $matches): bool
     {
         $configKeyStart = $matches[0][1];
-        $openBracePos = strpos($content, '{', $configKeyStart);
+        $openBracePos = strpos($masked, '{', $configKeyStart);
 
         if ($openBracePos === false) {
             return false;
         }
 
-        $closeBracePos = $this->findMatchingClosingBrace($content, $openBracePos);
+        $closeBracePos = $this->findMatchingClosingBrace($masked, $openBracePos);
 
         if ($closeBracePos === false) {
             return false;
         }
 
-        $serversToAdd = $this->filterExistingServers($content, $openBracePos, $closeBracePos);
+        $serversToAdd = $this->filterExistingServers($masked, $openBracePos, $closeBracePos);
 
         if ($serversToAdd === []) {
             return true;
         }
 
-        $indentLength = $this->detectIndentation($content, $closeBracePos);
+        $indentLength = $this->detectIndentation($masked, $closeBracePos);
         $serverJsonParts = [];
 
         foreach ($serversToAdd as $key => $serverConfig) {
@@ -166,21 +175,14 @@ class FileWriter
         }
 
         $serversJson = implode(',' . "\n", $serverJsonParts);
-        $needsComma = $this->needsCommaBeforeClosingBrace($content, $openBracePos, $closeBracePos);
 
-        if (!$needsComma) {
-            $newContent = substr_replace($content, $serversJson, $closeBracePos, 0);
+        $insertPos = $this->findInsertionPoint($masked, $openBracePos, $closeBracePos);
+        $lineEnd = $insertPos + strcspn($masked, "\n", $insertPos, $closeBracePos - $insertPos);
 
-            return $this->writeFile($newContent);
-        }
+        $newContent = substr_replace($content, $serversJson, $lineEnd, 0);
 
-        $commaPosition = $this->findCommaInsertionPoint($content, $openBracePos, $closeBracePos);
-
-        if ($commaPosition !== -1) {
-            $newContent = substr_replace($content, ',', $commaPosition, 0);
-            $newContent = substr_replace($newContent, $serversJson, $commaPosition + 1, 0);
-        } else {
-            $newContent = substr_replace($content, $serversJson, $closeBracePos, 0);
+        if (!in_array($masked[$insertPos - 1], ['{', ','], true)) {
+            $newContent = substr_replace($newContent, ',', $insertPos, 0);
         }
 
         return $this->writeFile($newContent);
@@ -224,14 +226,36 @@ class FileWriter
     }
 
     /**
+     * Blank out comments while keeping offsets and line breaks intact.
+     *
+     * @param string $content Existing file contents
+     * @return string
+     */
+    protected function maskUnquotedComments(string $content): string
+    {
+        $pattern = '/"(?:\\\\.|[^"\\\\])*"|\'(?:\\\\.|[^\'\\\\])*\'|\\/\\/[^\\n]*|\\/\\*[\\s\\S]*?\\*\\//';
+
+        $masked = preg_replace_callback(
+            $pattern,
+            fn(array $matches): string => str_starts_with($matches[0], '//') || str_starts_with($matches[0], '/*')
+                ? (string)preg_replace('/[^\n]/', ' ', $matches[0])
+                : $matches[0],
+            $content,
+        );
+
+        return is_string($masked) ? $masked : $content;
+    }
+
+    /**
      * Inject a new configuration key block into the file.
      *
      * @param string $content Existing file contents
+     * @param string $masked Contents with comments blanked out (same offsets)
      * @return bool
      */
-    protected function injectNewConfigKey(string $content): bool
+    protected function injectNewConfigKey(string $content, string $masked): bool
     {
-        $openBracePos = strpos($content, '{');
+        $openBracePos = strpos($masked, '{');
 
         if ($openBracePos === false) {
             return false;
@@ -245,7 +269,7 @@ class FileWriter
 
         $serversJson = implode(',', $serverJsonParts);
         $configKeySection = '"' . $this->configKey . '": {' . $serversJson . '}';
-        $needsComma = $this->needsCommaAfterBrace($content, $openBracePos);
+        $needsComma = $this->needsCommaAfterBrace($masked, $openBracePos);
         $injection = $configKeySection . ($needsComma ? ',' : '');
         $newContent = substr_replace($content, $injection, $openBracePos + 1, 0);
 
@@ -294,10 +318,9 @@ class FileWriter
      */
     protected function needsCommaAfterBrace(string $content, int $bracePosition): bool
     {
-        $afterBrace = substr($content, $bracePosition + 1);
-        $trimmed = preg_replace('/^\s*(?:\/\/.*$)?/m', '', $afterBrace);
+        $trimmed = ltrim(substr($content, $bracePosition + 1));
 
-        return is_string($trimmed) && $trimmed !== '' && !str_starts_with($trimmed, '}');
+        return $trimmed !== '' && !str_starts_with($trimmed, '}');
     }
 
     /**
@@ -340,59 +363,19 @@ class FileWriter
     }
 
     /**
-     * Whether a comma is needed before a closing brace.
+     * Find the position after the last meaningful character in a block.
      *
-     * @param string $content Existing file contents
-     * @param int $openBracePos Opening brace position
-     * @param int $closeBracePos Closing brace position
-     * @return bool
-     */
-    protected function needsCommaBeforeClosingBrace(string $content, int $openBracePos, int $closeBracePos): bool
-    {
-        $innerContent = substr($content, $openBracePos + 1, $closeBracePos - $openBracePos - 1);
-        $trimmed = preg_replace('/\s+|\/\/.*$/m', '', $innerContent);
-
-        if (!is_string($trimmed) || $trimmed === '' || str_ends_with($trimmed, '{')) {
-            return false;
-        }
-
-        return !str_ends_with($trimmed, ',');
-    }
-
-    /**
-     * Find the position where a comma should be inserted before a closing brace.
-     *
-     * @param string $content Existing file contents
+     * @param string $content Existing file contents (comments blanked out)
      * @param int $openBracePos Opening brace position
      * @param int $closeBracePos Closing brace position
      * @return int
      */
-    protected function findCommaInsertionPoint(string $content, int $openBracePos, int $closeBracePos): int
+    protected function findInsertionPoint(string $content, int $openBracePos, int $closeBracePos): int
     {
         for ($i = $closeBracePos - 1; $i > $openBracePos; $i--) {
-            $char = $content[$i];
-
-            if (in_array($char, [' ', "\t", "\n", "\r"], true)) {
-                continue;
-            }
-
-            if ($i > 0 && $content[$i - 1] === '/' && $char === '/') {
-                $lineStart = strrpos($content, "\n", $i - strlen($content));
-
-                if ($lineStart === false) {
-                    $lineStart = 0;
-                }
-
-                $i = $lineStart;
-
-                continue;
-            }
-
-            if ($char !== ',') {
+            if (!in_array($content[$i], [' ', "\t", "\n", "\r"], true)) {
                 return $i + 1;
             }
-
-            return -1;
         }
 
         return $openBracePos + 1;
@@ -412,8 +395,11 @@ class FileWriter
         for ($i = count($lines) - 1; $i >= 0; $i--) {
             $line = $lines[$i];
 
-            if (preg_match('/^(\s*)"[^"]+"\s*:\s*\{/', $line, $matches) === 1) {
-                return strlen($matches[1]);
+            if (preg_match('/^(\s*)(?:["\']([^"\']+)["\']|([a-zA-Z_]\w*))\s*:\s*\{/', $line, $matches) === 1) {
+                $indent = strlen($matches[1]);
+                $key = $matches[2] !== '' ? $matches[2] : $matches[3];
+
+                return $key === $this->configKey ? max($indent * 2, 4) : $indent;
             }
         }
 
@@ -468,17 +454,7 @@ class FileWriter
      */
     protected function hasUnquotedComments(string $content): bool
     {
-        $pattern = '/"(?:\\\\.|[^"\\\\])*"|(\/\/.*)|(\\/\\*[\\s\\S]*?\\*\\/)/';
-
-        if (preg_match_all($pattern, $content, $matches, PREG_SET_ORDER)) {
-            foreach ($matches as $match) {
-                if (!empty($match[1]) || !empty($match[2])) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
+        return $this->maskUnquotedComments($content) !== $content;
     }
 
     /**
@@ -570,20 +546,6 @@ class FileWriter
     }
 
     /**
-     * Whether a new file should be written instead of updating an existing one.
-     *
-     * @return bool
-     */
-    protected function shouldWriteNew(): bool
-    {
-        if (!is_file($this->filePath)) {
-            return true;
-        }
-
-        return filesize($this->filePath) < 3;
-    }
-
-    /**
      * Read the target configuration file.
      *
      * @return string
@@ -596,6 +558,21 @@ class FileWriter
     }
 
     /**
+     * Normalize raw file contents for parsing (strip BOM, trim surrounding whitespace).
+     *
+     * @param string $content Raw file contents
+     * @return string
+     */
+    protected function normalizeContent(string $content): string
+    {
+        if (str_starts_with($content, "\xEF\xBB\xBF")) {
+            $content = substr($content, 3);
+        }
+
+        return trim($content);
+    }
+
+    /**
      * Write content to the target configuration file.
      *
      * @param string $content File contents
@@ -603,6 +580,10 @@ class FileWriter
      */
     protected function writeFile(string $content): bool
     {
+        if (!str_ends_with($content, "\n")) {
+            $content .= "\n";
+        }
+
         return file_put_contents($this->filePath, $content) !== false;
     }
 

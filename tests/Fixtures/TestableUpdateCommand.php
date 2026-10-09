@@ -10,7 +10,7 @@ use Cake\Console\ConsoleIo;
 use Crustum\Ignis\Command\UpdateCommand;
 use Crustum\Ignis\Support\Config;
 use Crustum\Inspector\ProjectManager;
-use Mockery;
+use JMac\Testing\Double;
 
 /**
  * Update command test double that records delegated command invocations.
@@ -52,7 +52,7 @@ class TestableUpdateCommand extends UpdateCommand
      */
     public function __construct(Config $config, ?ProjectManager $project = null)
     {
-        parent::__construct($config, $project ?? Mockery::mock(ProjectManager::class));
+        parent::__construct($config, $project ?? Double::for(ProjectManager::class, override: true)->instance());
         $this->resolvedNewPackages = new Collection([]);
     }
 

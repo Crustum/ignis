@@ -26,7 +26,7 @@ class BrowserWatcher
             return false;
         }
 
-        return (bool)Configure::read('Ignis.browser_logs_watcher', false);
+        return (bool)Configure::read('Ignis.browser_logs_watcher', true);
     }
 
     /**

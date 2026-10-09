@@ -161,7 +161,10 @@ it('rejects remote tree paths that escape the skill target with parent segments'
     expect($result)->toBeFalse()
         ->and($escapeMarker)->not->toBeFile();
 
-    @unlink($targetDir . '/SKILL.md');
+    if (is_file($targetDir . '/SKILL.md')) {
+        @unlink($targetDir . '/SKILL.md');
+    }
+
     @rmdir($targetDir);
     @rmdir($parentDir);
 });
@@ -375,3 +378,211 @@ it('discovers skills in wildcard paths like .ai/*/skills', function (): void {
         ->and(remoteSkillNamed($skills, 'my-skill'))->not->toBeNull()
         ->and(remoteSkillNamed($skills, 'my-skill')->path)->toBe('.ai/claude/skills/my-skill');
 });
+
+it('does not download Blade templates from remote skills', function (): void {
+    $targetDir = sys_get_temp_dir() . '/ignis-test-' . uniqid();
+
+    $history = [];
+    $fetcher = githubProvider(new GitHubRepository('owner', 'repo'), [
+        ...githubDiscoverResponses([
+            ['path' => 'skill-one', 'type' => 'tree', 'sha' => 'def'],
+            ['path' => 'skill-one/SKILL.md', 'type' => 'blob', 'sha' => 'ghi', 'size' => 123],
+            ['path' => 'skill-one/references', 'type' => 'tree', 'sha' => 'jkl'],
+            ['path' => 'skill-one/references/example.blade.php', 'type' => 'blob', 'sha' => 'mno', 'size' => 456],
+        ]),
+        githubRawFileResponse('# SKILL Content'),
+    ], $history);
+
+    $skill = new RemoteSkill(
+        name: 'skill-one',
+        repo: 'owner/repo',
+        path: 'skill-one',
+    );
+
+    $result = $fetcher->downloadSkill($skill, $targetDir);
+
+    expect($result)->toBeTrue()
+        ->and($targetDir . '/SKILL.md')->toBeFile()
+        ->and($targetDir . '/references/example.blade.php')->not->toBeFile();
+
+    expect(githubHistoryUriCount($history, '.blade.php'))->toBe(0);
+
+    array_map(unlink(...), glob($targetDir . '/references/*'));
+    rmdir($targetDir . '/references');
+    array_map(unlink(...), glob($targetDir . '/*'));
+    rmdir($targetDir);
+});
+
+it('does not download PHP files whatever their casing', function (): void {
+    $targetDir = sys_get_temp_dir() . '/ignis-test-' . uniqid();
+
+    $history = [];
+    $fetcher = githubProvider(new GitHubRepository('owner', 'repo'), [
+        ...githubDiscoverResponses([
+            ['path' => 'skill-one', 'type' => 'tree', 'sha' => 'def'],
+            ['path' => 'skill-one/SKILL.md', 'type' => 'blob', 'sha' => 'ghi', 'size' => 123],
+            ['path' => 'skill-one/SKILL.Blade.php', 'type' => 'blob', 'sha' => 'jkl', 'size' => 456],
+            ['path' => 'skill-one/payload.PHP', 'type' => 'blob', 'sha' => 'mno', 'size' => 456],
+        ]),
+        githubRawFileResponse('# SKILL Content'),
+    ], $history);
+
+    $skill = new RemoteSkill(
+        name: 'skill-one',
+        repo: 'owner/repo',
+        path: 'skill-one',
+    );
+
+    $result = $fetcher->downloadSkill($skill, $targetDir);
+
+    expect($result)->toBeTrue()
+        ->and($targetDir . '/SKILL.md')->toBeFile();
+
+    expect(githubHistoryUriCount($history, '.php'))->toBe(0);
+
+    array_map(unlink(...), glob($targetDir . '/*'));
+    rmdir($targetDir);
+});
+
+it('discovers a skill when the path points at the skill directory itself', function (): void {
+    $fetcher = githubProvider(new GitHubRepository('owner', 'repo', 'skills/my-skill'), githubDiscoverResponses([
+        ['path' => 'skills', 'type' => 'tree', 'sha' => 'aaa'],
+        ['path' => 'skills/my-skill', 'type' => 'tree', 'sha' => 'bbb'],
+        ['path' => 'skills/my-skill/SKILL.md', 'type' => 'blob', 'sha' => 'ccc', 'size' => 123],
+        ['path' => 'skills/other-skill', 'type' => 'tree', 'sha' => 'ddd'],
+        ['path' => 'skills/other-skill/SKILL.md', 'type' => 'blob', 'sha' => 'eee', 'size' => 456],
+    ]));
+    $skills = $fetcher->discoverSkills();
+
+    expect($skills)->toHaveCount(1)
+        ->and(remoteSkillNamed($skills, 'my-skill'))->not->toBeNull()
+        ->and(remoteSkillNamed($skills, 'my-skill')->path)->toBe('skills/my-skill');
+});
+
+it('downloads a skill whose path was given directly', function (): void {
+    $targetDir = sys_get_temp_dir() . '/ignis-test-' . uniqid();
+
+    $fetcher = githubProvider(new GitHubRepository('owner', 'repo', 'skills/my-skill'), [
+        ...githubDiscoverResponses([
+            ['path' => 'skills', 'type' => 'tree', 'sha' => 'aaa'],
+            ['path' => 'skills/my-skill', 'type' => 'tree', 'sha' => 'bbb'],
+            ['path' => 'skills/my-skill/SKILL.md', 'type' => 'blob', 'sha' => 'ccc', 'size' => 123],
+        ]),
+        githubRawFileResponse('# Direct'),
+    ]);
+
+    $skill = remoteSkillNamed($fetcher->discoverSkills(), 'my-skill');
+
+    try {
+        expect($fetcher->downloadSkill($skill, $targetDir))->toBeTrue()
+            ->and(file_get_contents($targetDir . '/SKILL.md'))->toBe('# Direct');
+    } finally {
+        array_map(unlink(...), glob($targetDir . '/*'));
+        rmdir($targetDir);
+    }
+});
+
+it('ignores a skill directory whose name cannot be a skill name', function (): void {
+    $fetcher = githubProvider(new GitHubRepository('owner', 'repo'), githubDiscoverResponses([
+        ['path' => '... ', 'type' => 'tree', 'sha' => 'aaa'],
+        ['path' => '... /SKILL.md', 'type' => 'blob', 'sha' => 'bbb', 'size' => 123],
+        ['path' => '..\\..\\evil', 'type' => 'tree', 'sha' => 'eee'],
+        ['path' => '..\\..\\evil/SKILL.md', 'type' => 'blob', 'sha' => 'fff', 'size' => 789],
+        ['path' => 'skill-one', 'type' => 'tree', 'sha' => 'ccc'],
+        ['path' => 'skill-one/SKILL.md', 'type' => 'blob', 'sha' => 'ddd', 'size' => 456],
+    ]));
+
+    expect($fetcher->discoverSkills()->keys()->toArray())->toBe(['skill-one']);
+});
+
+it('discovers skills at any depth below the given path', function (string $path): void {
+    $fetcher = githubProvider(new GitHubRepository('owner', 'repo', $path), githubDiscoverResponses([
+        ['path' => '.ai', 'type' => 'tree', 'sha' => 'aaa'],
+        ['path' => '.ai/claude', 'type' => 'tree', 'sha' => 'bbb'],
+        ['path' => '.ai/claude/skills', 'type' => 'tree', 'sha' => 'ccc'],
+        ['path' => '.ai/claude/skills/my-skill', 'type' => 'tree', 'sha' => 'ddd'],
+        ['path' => '.ai/claude/skills/my-skill/SKILL.md', 'type' => 'blob', 'sha' => 'eee', 'size' => 123],
+    ]));
+
+    $skills = $fetcher->discoverSkills();
+
+    expect($skills->keys()->toArray())->toBe(['my-skill'])
+        ->and(remoteSkillNamed($skills, 'my-skill')->path)->toBe('.ai/claude/skills/my-skill');
+})->with([
+    'whole repository' => [''],
+    'a distant parent' => ['.ai'],
+    'an intermediate parent' => ['.ai/claude'],
+    'the direct parent' => ['.ai/claude/skills'],
+    'the skill directory itself' => ['.ai/claude/skills/my-skill'],
+    'the skill directory with a trailing slash' => ['.ai/claude/skills/my-skill/'],
+    'the SKILL.md file itself' => ['.ai/claude/skills/my-skill/SKILL.md'],
+]);
+
+it('keeps skills apart when one path is a prefix of another', function (): void {
+    $fetcher = githubProvider(new GitHubRepository('owner', 'repo', 'skills/my-skill'), githubDiscoverResponses([
+        ['path' => 'skills/my-skill', 'type' => 'tree', 'sha' => 'aaa'],
+        ['path' => 'skills/my-skill/SKILL.md', 'type' => 'blob', 'sha' => 'bbb', 'size' => 123],
+        ['path' => 'skills/my-skill-extra', 'type' => 'tree', 'sha' => 'ccc'],
+        ['path' => 'skills/my-skill-extra/SKILL.md', 'type' => 'blob', 'sha' => 'ddd', 'size' => 456],
+    ]));
+
+    expect($fetcher->discoverSkills()->keys()->toArray())->toBe(['my-skill']);
+});
+
+it('reads the branch named in the repository instead of asking for the default', function (): void {
+    $history = [];
+    $fetcher = githubProvider(new GitHubRepository('owner', 'repo', 'my-skill', 'develop'), [
+        githubTreeResponse([
+            ['path' => 'my-skill', 'type' => 'tree', 'sha' => 'aaa'],
+            ['path' => 'my-skill/SKILL.md', 'type' => 'blob', 'sha' => 'bbb', 'size' => 123],
+        ]),
+    ], $history);
+
+    expect($fetcher->discoverSkills()->keys()->toArray())->toBe(['my-skill'])
+        ->and(array_any($history, fn (array $entry): bool => (string)$entry['request']->getUri() === 'https://api.github.com/repos/owner/repo'))->toBeFalse();
+});
+
+it('downloads a skill from the branch named in the repository', function (): void {
+    $targetDir = sys_get_temp_dir() . '/ignis-test-' . uniqid();
+
+    $fetcher = githubProvider(new GitHubRepository('owner', 'repo', 'my-skill', 'develop'), [
+        githubTreeResponse([
+            ['path' => 'my-skill', 'type' => 'tree', 'sha' => 'aaa'],
+            ['path' => 'my-skill/SKILL.md', 'type' => 'blob', 'sha' => 'bbb', 'size' => 123],
+        ]),
+        githubRawFileResponse('# Develop'),
+    ]);
+
+    $skill = remoteSkillNamed($fetcher->discoverSkills(), 'my-skill');
+
+    try {
+        expect($fetcher->downloadSkill($skill, $targetDir))->toBeTrue()
+            ->and(file_get_contents($targetDir . '/SKILL.md'))->toBe('# Develop');
+    } finally {
+        array_map(unlink(...), glob($targetDir . '/*'));
+        rmdir($targetDir);
+    }
+});
+
+it('refuses to download a skill whose tree escapes the skill directory', function (string $escapingPath): void {
+    $targetDir = sys_get_temp_dir() . '/ignis-test-' . uniqid();
+
+    $fetcher = githubProvider(new GitHubRepository('owner', 'repo'), [
+        ...githubDiscoverResponses([
+            ['path' => 'skill-one', 'type' => 'tree', 'sha' => 'aaa'],
+            ['path' => 'skill-one/SKILL.md', 'type' => 'blob', 'sha' => 'bbb', 'size' => 123],
+            ['path' => $escapingPath, 'type' => 'blob', 'sha' => 'ccc', 'size' => 456],
+        ]),
+        githubRawFileResponse('escaped'),
+    ]);
+
+    $skill = new RemoteSkill(name: 'skill-one', repo: 'owner/repo', path: 'skill-one');
+
+    expect($fetcher->downloadSkill($skill, $targetDir))->toBeFalse()
+        ->and(is_dir($targetDir))->toBeFalse();
+})->with([
+    'backslash' => ['skill-one/..\\..\\escaped.txt'],
+    'parent segment' => ['skill-one/../../escaped.txt'],
+    'null byte' => ["skill-one/nested\0/escaped.txt"],
+]);
+

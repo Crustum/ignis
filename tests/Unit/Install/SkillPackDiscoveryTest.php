@@ -10,6 +10,7 @@ use Crustum\Inspector\Ecosystems\JsEcosystem;
 use Crustum\Inspector\Package;
 use Crustum\Inspector\PackageCollection;
 use Crustum\Inspector\ProjectManager;
+use JMac\Testing\Double;
 
 /**
  * @param list<\Crustum\Inspector\Package> $packages PHP packages
@@ -17,20 +18,20 @@ use Crustum\Inspector\ProjectManager;
  */
 function mockSkillPackProject(array $packages): ProjectManager
 {
-    $project = Mockery::mock(ProjectManager::class);
-    $php = Mockery::mock(Ecosystem::class);
-    $js = Mockery::mock(JsEcosystem::class);
+    $project = Double::for(ProjectManager::class, override: true);
+    $php = Double::for(Ecosystem::class);
+    $js = Double::for(JsEcosystem::class);
 
-    $project->shouldReceive('php')->andReturn($php);
-    $project->shouldReceive('js')->andReturn($js);
-    $php->shouldReceive('packages')->andReturn(new PackageCollection($packages));
-    $js->shouldReceive('packages')->andReturn(new PackageCollection([]));
-    $php->shouldReceive('uses')->andReturnUsing(
+    $project->allows('php')->returns($php);
+    $project->allows('js')->returns($js);
+    $php->allows('packages')->returns(new PackageCollection($packages));
+    $js->allows('packages')->returns(new PackageCollection([]));
+    $php->allows('uses')->resolves(
         fn(string $name): bool => array_any($packages, fn(Package $package): bool => $package->name() === $name),
     );
-    $js->shouldReceive('uses')->andReturn(false);
+    $js->allows('uses')->returns(false);
 
-    return $project;
+    return $project->instance();
 }
 
 test('composerNameFromSkillPackFolder maps aliases and nested paths', function (): void {

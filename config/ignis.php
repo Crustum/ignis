@@ -103,9 +103,13 @@ return [
          * - `dependencies` — which packages appear in Foundational Context:
          *   `direct` = composer.json / package.json requires only;
          *   `all` = full Inspector package set (previous default behavior).
+         * - `exclude` — guideline keys never composed by `ignis install` /
+         *   `ignis update`, matching the names shown in the install summary
+         *   (e.g. `cakedc/users/16`).
          */
         'guidelines' => [
             'dependencies' => env('IGNIS_GUIDELINES_DEPENDENCIES', 'direct'),
+            'exclude' => [],
         ],
 
         /**

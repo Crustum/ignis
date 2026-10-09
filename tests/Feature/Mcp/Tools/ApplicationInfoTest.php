@@ -92,14 +92,16 @@ it('returns updated package versions when a new inspector instance is used', fun
     });
 });
 
-it('reports the configured default datasource connection name', function (): void {
-    Configure::write('Datasources.default', 'test');
+it('reports the driver name when the default connection has a custom name', function (): void {
+    Configure::write('Datasources.default', 'tenant');
 
     $response = (new ApplicationInfo(mockApplicationInfoProject()))->handle(new Request([]));
 
     expect($response)->toolJsonContent(function (array $data): void {
-        expect($data['database_engine'])->toBe('test');
+        expect($data['database_engine'])->toBe('sqlite');
     });
+
+    Configure::delete('Datasources.default');
 });
 
 it('does not expose datasource credentials in application info', function (): void {
@@ -118,7 +120,7 @@ it('does not expose datasource credentials in application info', function (): vo
     $response = (new ApplicationInfo(mockApplicationInfoProject()))->handle(new Request([]));
 
     expect($response)->toolJsonContent(function (array $data) use ($secretPassword): void {
-        expect($data['database_engine'])->toBe('leaky')
+        expect($data['database_engine'])->toBe('sqlite')
             ->and($data['database_engine'])->not->toBeArray();
 
         $encoded = json_encode($data);

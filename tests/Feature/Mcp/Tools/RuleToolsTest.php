@@ -123,6 +123,23 @@ it('keeps distinct areas that share a last path segment in separate files', func
         ->not->toContain('## Admin rule');
 });
 
+it('keeps distinct single-segment filename globs in separate files', function (): void {
+    $tool = new RecordRule($this->repository);
+
+    $tool->handle(new Request(['glob' => 'composer.json', 'title' => 'Composer rule', 'note' => 'Composer only.']));
+    $tool->handle(new Request(['glob' => '.env*', 'title' => 'Env rule', 'note' => 'Env only.']));
+    $tool->handle(new Request(['glob' => '**', 'title' => 'Global rule', 'note' => 'Global only.']));
+
+    expect(featureRuleFiles($this->rulesDir))->toHaveCount(3);
+
+    expect(file_get_contents($this->rulesDir . '/composer-json.md'))
+        ->toContain('composer.json')
+        ->toContain('## Composer rule')
+        ->not->toContain('.env*')
+        ->not->toContain('## Env rule')
+        ->not->toContain('## Global rule');
+});
+
 it('does not record a rule into the reserved index file', function (): void {
     $located = $this->repository->write('index/**', 'Index area rule', 'This must survive.');
 

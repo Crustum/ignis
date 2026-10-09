@@ -24,9 +24,9 @@ class RuleRepository
     /**
      * Constructor.
      *
-     * @param string $directory Rules directory path
+     * @param string|null $directory Rules directory path; null follows ProjectRoot `.ai/rules`
      */
-    public function __construct(protected string $directory)
+    public function __construct(protected ?string $directory = null)
     {
     }
 
@@ -120,8 +120,8 @@ class RuleRepository
             unlink($indexPath);
         }
 
-        if (is_dir($this->directory) && $this->isEmptyDirectory($this->directory)) {
-            rmdir($this->directory);
+        if (is_dir($this->rulesDirectory()) && $this->isEmptyDirectory($this->rulesDirectory())) {
+            rmdir($this->rulesDirectory());
         }
     }
 
@@ -136,7 +136,7 @@ class RuleRepository
     public function write(string $glob, string $title, string $note): string
     {
         $glob = $this->normalizeGlob($glob);
-        $title = trim((string)preg_replace('/\R/', ' ', $title));
+        $title = trim(str_replace(["\r\n", "\r", "\n"], ' ', $title));
         $note = trim($note);
 
         $target = $this->resolveTargetFile($glob);
@@ -178,10 +178,54 @@ class RuleRepository
 
         $path = $this->indexPath();
 
-        $this->ensureDirectoryExists($this->directory);
+        $this->ensureDirectoryExists($this->rulesDirectory());
         file_put_contents($path, $body);
 
         return $path;
+    }
+
+    /**
+     * Whether the rules directory exists.
+     *
+     * @return bool
+     */
+    public function exists(): bool
+    {
+        return is_dir($this->rulesDirectory());
+    }
+
+    /**
+     * Rule files that still contain unresolved merge conflict markers.
+     *
+     * @return array<int, string>
+     */
+    public function conflictedFiles(): array
+    {
+        /** @var \Cake\Collection\CollectionInterface<int, string> $files */
+        $files = new Collection(array_merge($this->files(), $this->managedFiles()));
+
+        return $files
+            ->filter(fn(string $file): bool => preg_match('/^(<{7}|>{7})(\s|$)/m', (string)file_get_contents($file)) === 1)
+            ->toList();
+    }
+
+    /**
+     * Rule files the index skips because their frontmatter declares no paths.
+     *
+     * @return array<int, string>
+     */
+    public function unindexedFiles(): array
+    {
+        /** @var array<int, string> $files */
+        $files = (new Collection(array_merge(
+            $this->parsedFiles(),
+            $this->parsedManagedFiles()->toList(),
+        )))
+            ->filter(fn(array $row): bool => $row['paths'] === [])
+            ->map(fn(array $row): string => $row['file'])
+            ->toList();
+
+        return $files;
     }
 
     /**
@@ -264,7 +308,7 @@ class RuleRepository
     {
         $segments = $this->meaningfulSegments($glob);
         $taken = $allParsed->map(fn(array $parsed): string => $parsed['file'])->toList();
-        $reserved = $this->joinPaths($this->directory, self::INDEX_FILENAME);
+        $reserved = $this->joinPaths($this->rulesDirectory(), self::INDEX_FILENAME);
 
         $candidates = [];
         $counter = count($segments);
@@ -282,7 +326,7 @@ class RuleRepository
         }
 
         foreach ($candidates as $candidate) {
-            $path = $this->joinPaths($this->directory, $candidate . '.md');
+            $path = $this->joinPaths($this->rulesDirectory(), $candidate . '.md');
 
             if ($path !== $reserved && !in_array($path, $taken, true) && !is_file($path)) {
                 return $path;
@@ -293,7 +337,7 @@ class RuleRepository
         $suffix = 2;
 
         do {
-            $path = $this->joinPaths($this->directory, $base . '-' . $suffix . '.md');
+            $path = $this->joinPaths($this->rulesDirectory(), $base . '-' . $suffix . '.md');
             $suffix++;
         } while (in_array($path, $taken, true) || is_file($path));
 
@@ -326,6 +370,12 @@ class RuleRepository
                 continue;
             }
 
+            $segments[] = $segment;
+        }
+
+        $directories = [];
+
+        foreach ($segments as $segment) {
             if (str_contains($segment, '*')) {
                 continue;
             }
@@ -334,10 +384,10 @@ class RuleRepository
                 continue;
             }
 
-            $segments[] = $segment;
+            $directories[] = $segment;
         }
 
-        return $segments;
+        return $directories !== [] ? $directories : $segments;
     }
 
     /**
@@ -348,7 +398,17 @@ class RuleRepository
      */
     protected function slugForSegments(array $segments): string
     {
-        return Text::slug(Inflector::underscore(implode(' ', $segments)));
+        $words = [];
+
+        foreach ($segments as $segment) {
+            if (str_contains($segment, '*') || str_contains($segment, '.')) {
+                $words[] = strtolower(str_replace('.', ' ', $segment));
+            } else {
+                $words[] = Inflector::underscore($segment);
+            }
+        }
+
+        return Text::slug(implode(' ', $words));
     }
 
     /**
@@ -379,7 +439,7 @@ class RuleRepository
             try {
                 $parsed = $this->parse($path);
             } catch (Throwable) {
-                $raw = (string)preg_replace('/\R/', "\n", (string)file_get_contents($path));
+                $raw = str_replace(["\r\n", "\r"], "\n", (string)file_get_contents($path));
                 $parsed = ['paths' => [], 'body' => $raw];
             }
         }
@@ -446,7 +506,7 @@ class RuleRepository
      */
     protected function files(): array
     {
-        return $this->markdownFilesIn($this->directory, excludeIndex: true);
+        return $this->markdownFilesIn($this->rulesDirectory(), excludeIndex: true);
     }
 
     /**
@@ -466,7 +526,7 @@ class RuleRepository
      */
     protected function managedDir(): string
     {
-        return $this->joinPaths($this->directory, self::MANAGED_DIRNAME);
+        return $this->joinPaths($this->rulesDirectory(), self::MANAGED_DIRNAME);
     }
 
     /**
@@ -476,7 +536,7 @@ class RuleRepository
      */
     protected function indexPath(): string
     {
-        return $this->joinPaths($this->directory, self::INDEX_FILENAME);
+        return $this->joinPaths($this->rulesDirectory(), self::INDEX_FILENAME);
     }
 
     /**
@@ -632,6 +692,16 @@ class RuleRepository
         $items = scandir($directory);
 
         return $items !== false && count($items) <= 2;
+    }
+
+    /**
+     * Resolve the rules base directory (follows ProjectRoot when unset).
+     *
+     * @return string
+     */
+    protected function rulesDirectory(): string
+    {
+        return $this->directory ?? (ProjectRoot::path() . DS . '.ai' . DS . 'rules');
     }
 
     /**

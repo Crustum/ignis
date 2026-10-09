@@ -8,9 +8,11 @@ use Crustum\Ignis\Contracts\SupportsMcp;
 use Crustum\Ignis\Install\Detection\DetectionStrategyFactory;
 use Crustum\Ignis\Install\Enums\McpInstallationStrategy;
 use Crustum\Ignis\Install\Enums\Platform;
+use Crustum\Ignis\Install\InstallPath;
 use Crustum\Ignis\Install\Mcp\FileWriter;
 use Crustum\Ignis\Install\Mcp\TomlFileWriter;
 use Crustum\Ignis\Support\CommandNormalizer;
+use Crustum\Ignis\Support\ProjectRoot;
 
 /**
  * Base installer for AI coding agents.
@@ -58,7 +60,7 @@ abstract class Agent implements SupportsMcp
      */
     public function getPhpPath(bool $forceAbsolutePath = false): string
     {
-        $phpBinaryPath = Configure::read('Ignis.executable_paths.php') ?? 'php';
+        $phpBinaryPath = Configure::read('Ignis.executable_paths.php') ?: 'php';
 
         if ($phpBinaryPath === 'php' && ($this->useAbsolutePathForMcp() || $forceAbsolutePath)) {
             return PHP_BINARY;
@@ -226,7 +228,7 @@ abstract class Agent implements SupportsMcp
      */
     public function installHttpMcp(string $key, string $url): bool
     {
-        $path = $this->mcpConfigPath();
+        $path = $this->resolveProjectFilePath($this->mcpConfigPath());
 
         if ($path === null) {
             return false;
@@ -295,10 +297,29 @@ abstract class Agent implements SupportsMcp
     protected function rootPath(string $path = ''): string
     {
         if ($path === '') {
-            return ROOT;
+            return ProjectRoot::path();
         }
 
-        return ROOT . DS . ltrim(str_replace(['/', '\\'], DS, $path), DS);
+        return ProjectRoot::path() . DS . ltrim(str_replace(['/', '\\'], DS, $path), DS);
+    }
+
+    /**
+     * Resolve an agent config path relative to the active install root.
+     *
+     * @param string|null $path Absolute or project-relative path
+     * @return string|null
+     */
+    protected function resolveProjectFilePath(?string $path): ?string
+    {
+        if ($path === null || $path === '') {
+            return $path;
+        }
+
+        if (InstallPath::isAbsolutePath($path)) {
+            return $path;
+        }
+
+        return $this->rootPath($path);
     }
 
     /**
@@ -372,7 +393,7 @@ abstract class Agent implements SupportsMcp
      */
     protected function installFileMcp(string $key, string $command, array $args = [], array $env = []): bool
     {
-        $path = $this->mcpConfigPath();
+        $path = $this->resolveProjectFilePath($this->mcpConfigPath());
 
         if ($path === null) {
             return false;

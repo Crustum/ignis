@@ -1,0 +1,25 @@
+{% set pest = assist.hasPackage('pestphp/pest') %}
+# Security Tests
+
+Test each security boundary where user input affects authorization, rendered output, or query construction. A defect at such a boundary can be difficult to detect because the feature may continue to work.
+
+Write a test for each of these cases:
+
+- **Cross-record access.** Request a record owned by a different user. Read `rules/endpoint-tests.twig` for why the response should possibly be `404` rather than `403`.
+- **Each unprivileged role.** Use a data provider over the roles that the endpoint must refuse.
+- **Escaping user-provided content.** Test escaping in templates, elements, and mail. Include names and every free-text field a template renders. Assert that dangerous characters are escaped and the raw value is absent. Do not assert an exact entity for a quote, because escaping helpers and mail inliners may decode it.
+- **Injection into dynamic query components.** Examples include sort columns, filter fields, and sort directions passed to the query builder.
+- **An unexpected key** in a payload or entity data. A patch that accepts every key can set an attribute the user must not control — check the entity `$_accessible` whitelist.
+
+```php
+public function test_escapes_dangerous_content_on_the_article_page(): void
+{
+    // Fixture row with title: O'Reilly <script>alert('xss')</script>
+    $this->get('/articles/view/1');
+    $this->assertResponseOk();
+    $this->assertResponseContains('&lt;script&gt;');
+    $this->assertResponseNotContains("<script>alert('xss')</script>");
+}
+```
+
+CakePHP provides defenses against mass assignment, unauthorized access, and unescaped output. Test that the application applies the appropriate defense to each attribute, route, and template.

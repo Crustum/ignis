@@ -30,16 +30,28 @@ abstract class DatabaseSchemaDriver
      */
     protected function query(string $sql, array $params = []): array
     {
+        return $this->tryQuery($sql, $params) ?? [];
+    }
+
+    /**
+     * Execute a schema query and return null when the engine rejects it.
+     *
+     * @param string $sql Schema SQL
+     * @param array<int, mixed> $params Bound parameters
+     * @return array<int, array<string, mixed>>|null
+     */
+    protected function tryQuery(string $sql, array $params = []): ?array
+    {
         try {
             $connection = ConnectionManager::get($this->connection);
 
             if (!$connection instanceof Connection) {
-                return [];
+                return null;
             }
 
             return $connection->execute($sql, $params)->fetchAll('assoc');
         } catch (Throwable) {
-            return [];
+            return null;
         }
     }
 

@@ -16,12 +16,21 @@ class GitHubRepository
      * @param string $owner GitHub repository owner
      * @param string $repo GitHub repository name
      * @param string $path Optional repository-relative path
+     * @param string $branch Optional branch name (overrides the default branch)
      */
     public function __construct(
         public string $owner,
         public string $repo,
         public string $path = '',
+        public string $branch = '',
     ) {
+        $path = trim($path, '/');
+        $lastSegment = str_contains($path, '/') ? substr($path, (int)strrpos($path, '/') + 1) : $path;
+        $directory = $lastSegment === 'SKILL.md'
+            ? (str_contains($path, '/') ? substr($path, 0, (int)strrpos($path, '/')) : '')
+            : $path;
+
+        $this->path = $directory === '.' ? '' : $directory;
     }
 
     /**
@@ -33,7 +42,9 @@ class GitHubRepository
      */
     public static function fromInput(string $input): self
     {
-        return self::parseOwnerRepoPath(self::normalizeUrl($input));
+        [$input, $branch] = self::normalizeUrl($input);
+
+        return self::parseOwnerRepoPath($input, $branch);
     }
 
     /**
@@ -59,16 +70,20 @@ class GitHubRepository
     }
 
     /**
-     * Normalize a GitHub URL into repository shorthand.
+     * Normalize a GitHub URL into repository shorthand and branch.
      *
      * @param string $input Repository shorthand or URL
-     * @return string Normalized shorthand
+     * @return array{0: string, 1: string} Normalized shorthand and branch
      * @throws \InvalidArgumentException When a URL is not hosted by GitHub
      */
-    private static function normalizeUrl(string $input): string
+    private static function normalizeUrl(string $input): array
     {
-        if (!str_starts_with($input, 'http://') && !str_starts_with($input, 'https://')) {
-            return $input;
+        if (preg_match('~^(?:[^@/:]+@)?(?<host>[^:]+):(?!//)(?<path>.+)$~', $input, $matches) === 1) {
+            $input = 'ssh://' . $matches['host'] . '/' . $matches['path'];
+        }
+
+        if (!str_starts_with($input, 'http://') && !str_starts_with($input, 'https://') && !str_starts_with($input, 'ssh://')) {
+            return [$input, ''];
         }
 
         $parsed = parse_url($input);
@@ -80,17 +95,27 @@ class GitHubRepository
 
         $path = trim((string)($parsed['path'] ?? ''), '/');
 
-        return preg_replace('#/tree/[^/]+#', '', $path) ?? $path;
+        if (str_ends_with($path, '.git')) {
+            $path = substr($path, 0, -4);
+        }
+
+        // A branch name containing a slash is indistinguishable from the path after it.
+        if (preg_match('#^(?P<repository>[^/]+/[^/]+)/(?:tree|blob)/(?P<branch>[^/]+)/?(?P<path>.*)$#', $path, $matches) === 1) {
+            return [rtrim($matches['repository'] . '/' . $matches['path'], '/'), $matches['branch']];
+        }
+
+        return [$path, ''];
     }
 
     /**
-     * Parse owner, repository, and optional path from shorthand.
+     * Parse owner, repository, optional path, and branch from shorthand.
      *
      * @param string $input Repository shorthand
+     * @param string $branch Optional branch name
      * @return self Parsed repository descriptor
      * @throws \InvalidArgumentException When the shorthand is invalid
      */
-    private static function parseOwnerRepoPath(string $input): self
+    private static function parseOwnerRepoPath(string $input, string $branch = ''): self
     {
         $parts = explode('/', $input);
 
@@ -100,6 +125,6 @@ class GitHubRepository
             );
         }
 
-        return new self($parts[0], $parts[1], implode('/', array_slice($parts, 2)));
+        return new self($parts[0], $parts[1], implode('/', array_slice($parts, 2)), $branch);
     }
 }

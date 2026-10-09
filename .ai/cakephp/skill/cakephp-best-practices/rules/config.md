@@ -41,6 +41,14 @@ Load additional files with `Configure::load()` when the application already stru
 
 Do not commit production secrets. Prefer `config/app_local.php`, environment variables, or the host’s secret store. `Security.salt` must be unique per deployment.
 
+Use scanner-safe placeholders in documented examples — never values that look like real secrets:
+
+```bash
+# A plaintext .env value committed to the repository
+STRIPE_SECRET=<your-stripe-secret>
+AWS_SECRET_ACCESS_KEY=<your-aws-secret>
+```
+
 ## Check `debug` via Configure
 
 Incorrect:

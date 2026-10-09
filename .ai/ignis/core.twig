@@ -14,10 +14,7 @@
 
 {% if assist.rulesEnabled() %}
 ## Project Rules
-- This project may keep committed, area-grouped rules in `.ai/rules` (settled decisions, non-obvious traps, standing constraints). Before you plan or edit files, open `.ai/rules/index.md` when it exists, read every rule file whose globs cover the paths in scope, and search `.ai/rules` for relevant keywords. Do not write code until matching rules are understood.
-{% if assist.hasMcpEnabled() %}
-- Record durable rules with `record-rule` so the next agent or teammate inherits them. Pass a `glob` (for example `src/Controller/**`), a short `title`, and a concise `note`. Use `record-rule` for team-shared repo rules — not personal session memory.
-{% endif %}
+- This project contains committed, area-grouped rules in `.ai/rules` when that directory exists, including path-scoped framework guidelines under `.ai/rules/ignis`. Before you enter plan mode or create/edit any file, you MUST first: open `.ai/rules/index.md` (it maps file globs to rule files), read every rule file whose globs cover the path(s) in scope, and run `grep -rin 'keyword' .ai/rules` to catch what a path match alone misses. Do not write code until you have read and are following every matching rule. If `.ai/rules` does not exist, continue without it.
 
 {% endif %}
 

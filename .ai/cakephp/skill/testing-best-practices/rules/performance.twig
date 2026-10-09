@@ -1,0 +1,42 @@
+{% set pest = assist.hasPackage('pestphp/pest') %}
+{% set pest5 = assist.uses('pestphp/pest', '>=5.0') %}
+# Test Suite Performance
+
+These settings apply to the project and CI, not to individual tests. Read `rules/isolation.twig` for choices within a test.
+
+Measure before changing a setting. Find the slow test first, and apply a project-wide setting only after identifying the costly work.
+
+## Test Environment
+
+- Keep the `test` datasource in `config/app_local.php` on a dedicated test database, so suite runs never touch development data.
+- Disable debuggers and coverage drivers (Xdebug, pcov) for runs that do not need them.
+- Prefer the rolled-back-transaction strategy suite-wide via the `TestSuite.fixtureStrategy` Configure key when tests do not depend on resetting auto-increment between methods — truncating every table per test gets expensive as the application grows.
+
+## How to Find a Slow Test
+
+Run the narrowest slice first, then widen:
+
+```bash
+vendor/bin/phpunit --filter testSave tests/TestCase/Model/Table/ArticlesTableTest
+bin/cake test --filter testSave
+```
+
+Start with the ten slowest tests, because the same cause often applies to the complete suite. If the cause of a slow test is unclear, add a temporary log entry to identify its work.
+
+## Parallel Runs
+
+A parallel run gives each process a separate database. Tests must meet these conditions; a test that fails only in parallel breaks one of them:
+
+- The test creates each record that it reads. It does not read a record that another test creates.
+- The test does not depend on the order of the run.
+- The test does not share a file, a cache key, or a queue with another test. Give each process a separate name for such a resource.
+
+{% if pest and pest5 %}
+In files that already use Pest 5, `--parallel --tia` replays cached results for unaffected tests, and `--shard=N/M` with a committed `tests/.pest/shards.json` splits the suite across CI jobs by runtime.
+{% endif %}
+
+## Common Errors
+
+- The run loads a debugger or coverage driver for a test that does not need it.
+- The code under test calls a real `sleep()`.
+- The code under test reaches the network because an HTTP fake is missing.

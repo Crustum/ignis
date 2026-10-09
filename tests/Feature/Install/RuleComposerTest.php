@@ -8,8 +8,10 @@ use Crustum\Ignis\Install\GuidelineComposer;
 use Crustum\Ignis\Install\GuidelineConfig;
 use Crustum\Ignis\Install\RuleComposer;
 use Crustum\Ignis\Support\PackageRegistry;
+use Crustum\Ignis\Support\ProjectRoot;
 use Crustum\Inspector\PackageCollection;
 use Crustum\Inspector\ProjectManager;
+use JMac\Testing\Double;
 
 beforeEach(function (): void {
     useTestApp();
@@ -17,15 +19,14 @@ beforeEach(function (): void {
     Configure::write('Ignis.rules.scoped_guidelines', true);
     Configure::delete('Ignis.guidelines.exclude');
 
-    $this->project = Mockery::mock(ProjectManager::class);
-    $this->guidelines = new GuidelineComposer($this->project);
+    $this->project = Double::for(ProjectManager::class, override: true);
+    $this->guidelines = new GuidelineComposer($this->project->instance());
 });
 
 afterEach(function (): void {
     Configure::delete('Ignis.guidelines.exclude');
     Configure::delete('Ignis.rules.scoped_guidelines');
     resetTestApp();
-    Mockery::close();
 });
 
 /**
@@ -37,14 +38,9 @@ afterEach(function (): void {
  */
 function composerWithFixtureGuidelines(ProjectManager $project, string $fixture): GuidelineComposer
 {
-    $dir = fixture($fixture);
+    ProjectRoot::set(fixture($fixture));
 
-    $guidelines = Mockery::mock(GuidelineComposer::class, [$project])->makePartial();
-    $guidelines
-        ->shouldReceive('customGuidelinePath')
-        ->andReturnUsing(fn(string $path = ''): string => $dir . ($path !== '' ? DS . ltrim($path, '/\\') : ''));
-
-    return $guidelines;
+    return new GuidelineComposer($project);
 }
 
 /**
@@ -207,7 +203,7 @@ test('overriding a guideline via .ai/guidelines also overrides its scoped blocks
 
     mockProjectPackages($this->project, $packages);
 
-    $guidelines = composerWithFixtureGuidelines($this->project, 'rules/pest-override');
+    $guidelines = composerWithFixtureGuidelines($this->project->instance(), 'rules/pest-override');
 
     $rules = (new RuleComposer($guidelines))->rules();
     $pestRule = findRule($rules, fn(array $rule, string $key): bool => str_starts_with($key, 'pest/core#'));
@@ -307,7 +303,7 @@ test('composeManaged groups rules with different paths into separate files', fun
 test('a scoped block inside a false Twig conditional is not extracted as a rule', function (): void {
     mockProjectPackages($this->project, new PackageCollection([]));
 
-    $guidelines = composerWithFixtureGuidelines($this->project, 'rules/conditional');
+    $guidelines = composerWithFixtureGuidelines($this->project->instance(), 'rules/conditional');
 
     $rules = (new RuleComposer($guidelines))->rules();
 
@@ -318,7 +314,7 @@ test('a scoped block inside a false Twig conditional is not extracted as a rule'
 test('a headingless scoped block gets a slug-derived title instead of its first line', function (): void {
     mockProjectPackages($this->project, new PackageCollection([]));
 
-    $guidelines = composerWithFixtureGuidelines($this->project, 'rules/headingless');
+    $guidelines = composerWithFixtureGuidelines($this->project->instance(), 'rules/headingless');
 
     $managed = (new RuleComposer($guidelines))->composeManaged();
     $file = findRule($managed, fn(array $file): bool => $file['paths'] === ['app/Widgets/**']);
@@ -331,7 +327,7 @@ test('a headingless scoped block gets a slug-derived title instead of its first 
 test('a glob containing a bracket character class survives scoped path parsing', function (): void {
     mockProjectPackages($this->project, new PackageCollection([]));
 
-    $guidelines = composerWithFixtureGuidelines($this->project, 'rules/bracket-glob');
+    $guidelines = composerWithFixtureGuidelines($this->project->instance(), 'rules/bracket-glob');
 
     $rules = (new RuleComposer($guidelines))->rules();
     $rule = findRule($rules, fn(array $rule): bool => $rule['paths'] === ['app/[Ff]oo/**']);
@@ -343,7 +339,7 @@ test('a glob containing a bracket character class survives scoped path parsing',
 test('a scoped block with no parseable paths keeps its content inline instead of losing it', function (): void {
     mockProjectPackages($this->project, new PackageCollection([]));
 
-    $guidelines = composerWithFixtureGuidelines($this->project, 'rules/empty-paths');
+    $guidelines = composerWithFixtureGuidelines($this->project->instance(), 'rules/empty-paths');
 
     $rules = (new RuleComposer($guidelines))->rules();
     $inline = $guidelines->guidelines()->toArray()['.ai/empty']['content'] ?? '';
@@ -355,7 +351,7 @@ test('a scoped block with no parseable paths keeps its content inline instead of
 test('a glob containing parentheses survives scoped path parsing', function (): void {
     mockProjectPackages($this->project, new PackageCollection([]));
 
-    $guidelines = composerWithFixtureGuidelines($this->project, 'rules/paren-glob');
+    $guidelines = composerWithFixtureGuidelines($this->project->instance(), 'rules/paren-glob');
 
     $rules = (new RuleComposer($guidelines))->rules();
     $rule = findRule($rules, fn(array $rule): bool => $rule['paths'] === ['app/(Foo)/**']);
@@ -367,7 +363,7 @@ test('a glob containing parentheses survives scoped path parsing', function (): 
 test('nested scoped blocks never leak sentinels into rule content or inline output', function (): void {
     mockProjectPackages($this->project, new PackageCollection([]));
 
-    $guidelines = composerWithFixtureGuidelines($this->project, 'rules/nested');
+    $guidelines = composerWithFixtureGuidelines($this->project->instance(), 'rules/nested');
 
     $rules = (new RuleComposer($guidelines))->rules();
     $inline = $guidelines->guidelines()->toArray()['.ai/nested']['content'] ?? '';
@@ -382,7 +378,7 @@ test('nested scoped blocks never leak sentinels into rule content or inline outp
 test('a literal @scoped example inside a fenced code block is not extracted as a rule', function (): void {
     mockProjectPackages($this->project, new PackageCollection([]));
 
-    $guidelines = composerWithFixtureGuidelines($this->project, 'rules/fenced-literal');
+    $guidelines = composerWithFixtureGuidelines($this->project->instance(), 'rules/fenced-literal');
 
     $rules = (new RuleComposer($guidelines))->rules();
     $inline = $guidelines->guidelines()->toArray()['.ai/fenced']['content'] ?? '';
@@ -395,7 +391,7 @@ test('a literal @scoped example inside a fenced code block is not extracted as a
 test('a literal @scoped example inside a ignissnippet is not extracted as a rule', function (): void {
     mockProjectPackages($this->project, new PackageCollection([]));
 
-    $guidelines = composerWithFixtureGuidelines($this->project, 'rules/snippet-literal');
+    $guidelines = composerWithFixtureGuidelines($this->project->instance(), 'rules/snippet-literal');
 
     $rules = (new RuleComposer($guidelines))->rules();
     $inline = $guidelines->guidelines()->toArray()['.ai/snippet']['content'] ?? '';
@@ -407,7 +403,7 @@ test('a literal @scoped example inside a ignissnippet is not extracted as a rule
 test('a literal @scoped example inside a ~~~ fenced block is not extracted as a rule', function (): void {
     mockProjectPackages($this->project, new PackageCollection([]));
 
-    $guidelines = composerWithFixtureGuidelines($this->project, 'rules/tilde-fenced');
+    $guidelines = composerWithFixtureGuidelines($this->project->instance(), 'rules/tilde-fenced');
 
     $rules = (new RuleComposer($guidelines))->rules();
     $inline = $guidelines->guidelines()->toArray()['.ai/tilde']['content'] ?? '';
@@ -422,7 +418,7 @@ test('re-inlining a scoped block preserves its indentation instead of trimming i
 
     Configure::write('Ignis.rules.enabled', false);
 
-    $guidelines = composerWithFixtureGuidelines($this->project, 'rules/indented');
+    $guidelines = composerWithFixtureGuidelines($this->project->instance(), 'rules/indented');
     $inline = $guidelines->guidelines()->toArray()['.ai/indented']['content'] ?? '';
 
     expect($inline)->toContain("\n    Indented body line.");
@@ -431,7 +427,7 @@ test('re-inlining a scoped block preserves its indentation instead of trimming i
 test('nested scoped blocks are left inline instead of being mis-scoped', function (): void {
     mockProjectPackages($this->project, new PackageCollection([]));
 
-    $guidelines = composerWithFixtureGuidelines($this->project, 'rules/nested');
+    $guidelines = composerWithFixtureGuidelines($this->project->instance(), 'rules/nested');
 
     $rules = (new RuleComposer($guidelines))->rules();
     $inline = $guidelines->guidelines()->toArray()['.ai/nested']['content'] ?? '';
@@ -473,7 +469,7 @@ test('a user override in .ai/guidelines overrides a third-party guideline', func
     withThirdPartyPackages([
         'some/ovr' => ['core.md' => "# Vendor Default\n\nOriginal third-party guidance.\n"],
     ], function (): void {
-        $composer = new GuidelineComposer($this->project);
+        $composer = new GuidelineComposer($this->project->instance());
         $guideline = $composer->resolvedGuidelines()->toArray()['some/ovr/core'] ?? null;
 
         expect($guideline)->not->toBeNull()
@@ -491,14 +487,14 @@ test('third-party package selection matches multi-segment guideline keys', funct
         $selected = new GuidelineConfig();
         $selected->aiGuidelines = ['some/sel'];
 
-        $composer = (new GuidelineComposer($this->project))->config($selected);
+        $composer = (new GuidelineComposer($this->project->instance()))->config($selected);
 
         expect(array_keys($composer->resolvedGuidelines()->toArray()))->toContain('some/sel/admin/core');
 
         $other = new GuidelineConfig();
         $other->aiGuidelines = ['some/other'];
 
-        $composer = (new GuidelineComposer($this->project))->config($other);
+        $composer = (new GuidelineComposer($this->project->instance()))->config($other);
 
         expect(array_keys($composer->resolvedGuidelines()->toArray()))->not->toContain('some/sel/admin/core');
     });

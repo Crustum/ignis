@@ -159,7 +159,7 @@ Invalidate or shorten TTL when the underlying data changes (see caching rules).
 
 ## Add Indexes for Filter, Sort, and Join Columns
 
-Index columns used in `WHERE`, `ORDER BY`, `JOIN`, and `GROUP BY`. Migrations support `addIndex()` (and bake can generate indexed columns).
+Index columns used in `WHERE`, `ORDER BY`, `JOIN`, and `GROUP BY` — but a column appearing in those clauses does not automatically need its own index. Weigh selectivity and write cost, prefer composite indexes matching common filter + sort patterns, and avoid redundant indexes whose leading columns duplicate an existing index. Migrations support `addIndex()` (and bake can generate indexed columns).
 
 Incorrect:
 ```php

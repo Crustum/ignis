@@ -12,6 +12,7 @@ use Crustum\Ignis\Command\ExecuteToolCommand;
 use Crustum\Ignis\Command\InspectorCommand;
 use Crustum\Ignis\Command\InstallCommand;
 use Crustum\Ignis\Command\ListSkillCommand;
+use Crustum\Ignis\Command\RulesIndexCommand;
 use Crustum\Ignis\Command\StartCommand;
 use Crustum\Ignis\Command\UpdateCommand;
 use Crustum\Ignis\IgnisManager;
@@ -32,7 +33,8 @@ use Crustum\Ignis\Mcp\Tools\RecordRule;
 use Crustum\Ignis\Mcp\Tools\Tinker;
 use Crustum\Ignis\Rules\RuleRepository;
 use Crustum\Ignis\Support\Config;
-use Crustum\Ignis\Support\ProjectRoot;
+use Crustum\Ignis\Support\RenderFailures;
+use Crustum\Ignis\Support\SkillParseFailures;
 use Crustum\Ignis\Tinker\TinkerExecutor;
 use Crustum\Inspector\ProjectManager;
 
@@ -58,6 +60,8 @@ class IgnisServiceProvider extends ServiceProvider
         ToolExecutor::class,
         CallToolWithExecutor::class,
         TinkerExecutor::class,
+        RenderFailures::class,
+        SkillParseFailures::class,
         InstallCommand::class,
         UpdateCommand::class,
         StartCommand::class,
@@ -65,6 +69,7 @@ class IgnisServiceProvider extends ServiceProvider
         ExecuteToolCommand::class,
         ListSkillCommand::class,
         AddSkillCommand::class,
+        RulesIndexCommand::class,
     ];
 
     /**
@@ -77,9 +82,9 @@ class IgnisServiceProvider extends ServiceProvider
         $container->addShared(ContainerInterface::class, $container);
         $container->addShared(IgnisManager::class);
         $container->addShared(Config::class);
-        $container->addShared(RuleRepository::class, fn(): RuleRepository => new RuleRepository(
-            ProjectRoot::path() . DS . '.ai' . DS . 'rules',
-        ));
+        $container->addShared(RuleRepository::class, fn(): RuleRepository => new RuleRepository());
+        $container->addShared(RenderFailures::class, fn(): RenderFailures => new RenderFailures());
+        $container->addShared(SkillParseFailures::class, fn(): SkillParseFailures => new SkillParseFailures());
 
         $container->add(DirectoryDetectionStrategy::class);
         $container->add(FileDetectionStrategy::class);
@@ -190,6 +195,9 @@ class IgnisServiceProvider extends ServiceProvider
 
         $container->add(ListSkillCommand::class)
             ->addArgument(SkillComposer::class);
+
+        $container->add(RulesIndexCommand::class)
+            ->addArgument(RuleRepository::class);
 
         $container->add(AddSkillCommand::class)
             ->addArgument(CommandFactoryInterface::class);

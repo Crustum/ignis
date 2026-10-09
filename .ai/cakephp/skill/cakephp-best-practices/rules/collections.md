@@ -58,6 +58,8 @@ $results = $articles->find()
     ->all();
 ```
 
+Unbuffered iteration holds one cursor open for the whole pass — keep it for read-only, attribute-level work, and do not update rows in ways that shift the iterated query underneath itself.
+
 ## Keep Domain Mutations on Entities/Tables
 
 Collections are for shaping data. Prefer entity methods or Table updates for persistence; do not hide `save()` calls inside opaque `each()` chains without a clear application pattern.

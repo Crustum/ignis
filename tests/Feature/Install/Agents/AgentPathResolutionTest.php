@@ -10,14 +10,14 @@ use Crustum\Ignis\Install\Detection\DetectionStrategyFactory;
 
 test('Junie returns absolute PHP_BINARY path', function (): void {
     Configure::delete('Ignis.executable_paths.php');
-    $strategyFactory = Mockery::mock(DetectionStrategyFactory::class);
+    $strategyFactory = new DetectionStrategyFactory(freshTestContainer());
     $junie = new Junie($strategyFactory);
 
     expect($junie->getPhpPath())->toBe(PHP_BINARY);
 });
 
 test('Junie returns absolute cake path', function (): void {
-    $strategyFactory = Mockery::mock(DetectionStrategyFactory::class);
+    $strategyFactory = new DetectionStrategyFactory(freshTestContainer());
     $junie = new Junie($strategyFactory);
 
     $cakePath = $junie->getCakePath();
@@ -28,7 +28,7 @@ test('Junie returns absolute cake path', function (): void {
 
 test('Cursor returns relative php string', function (): void {
     Configure::delete('Ignis.executable_paths.php');
-    $strategyFactory = Mockery::mock(DetectionStrategyFactory::class);
+    $strategyFactory = new DetectionStrategyFactory(freshTestContainer());
     $cursor = new Cursor($strategyFactory);
 
     expect($cursor->getPhpPath())->toBe('php');
@@ -37,7 +37,7 @@ test('Cursor returns relative php string', function (): void {
 test('Cursor uses configured default_php_bin when not forcing absolute path', function (): void {
     Configure::write('Ignis.executable_paths.php', '/custom/path/to/php');
 
-    $strategyFactory = Mockery::mock(DetectionStrategyFactory::class);
+    $strategyFactory = new DetectionStrategyFactory(freshTestContainer());
     $cursor = new Cursor($strategyFactory);
 
     expect($cursor->getPhpPath())->toBe('/custom/path/to/php');
@@ -48,7 +48,7 @@ test('Cursor uses configured default_php_bin when not forcing absolute path', fu
 test('Cursor uses config even when forceAbsolutePath is true', function (): void {
     Configure::write('Ignis.executable_paths.php', '/custom/path/to/php');
 
-    $strategyFactory = Mockery::mock(DetectionStrategyFactory::class);
+    $strategyFactory = new DetectionStrategyFactory(freshTestContainer());
     $cursor = new Cursor($strategyFactory);
 
     expect($cursor->getPhpPath(true))->toBe('/custom/path/to/php');
@@ -59,14 +59,14 @@ test('Cursor uses config even when forceAbsolutePath is true', function (): void
 test('Cursor uses PHP_BINARY when forceAbsolutePath is true and config is empty', function (): void {
     Configure::delete('Ignis.executable_paths.php');
 
-    $strategyFactory = Mockery::mock(DetectionStrategyFactory::class);
+    $strategyFactory = new DetectionStrategyFactory(freshTestContainer());
     $cursor = new Cursor($strategyFactory);
 
     expect($cursor->getPhpPath(true))->toBe(PHP_BINARY);
 });
 
 test('Cursor returns relative cake path', function (): void {
-    $strategyFactory = Mockery::mock(DetectionStrategyFactory::class);
+    $strategyFactory = new DetectionStrategyFactory(freshTestContainer());
     $cursor = new Cursor($strategyFactory);
 
     expect($cursor->getCakePath())->toBe('bin/cake.php');
@@ -74,7 +74,7 @@ test('Cursor returns relative cake path', function (): void {
 
 test('Agents return absolute paths when forceAbsolutePath is true and config is empty', function (): void {
     Configure::delete('Ignis.executable_paths.php');
-    $strategyFactory = Mockery::mock(DetectionStrategyFactory::class);
+    $strategyFactory = new DetectionStrategyFactory(freshTestContainer());
     $cursor = new Cursor($strategyFactory);
 
     expect($cursor->getPhpPath(true))->toBe(PHP_BINARY)
@@ -84,7 +84,7 @@ test('Agents return absolute paths when forceAbsolutePath is true and config is 
 
 test('Agents maintain relative paths when forceAbsolutePath is false and config is empty', function (): void {
     Configure::delete('Ignis.executable_paths.php');
-    $strategyFactory = Mockery::mock(DetectionStrategyFactory::class);
+    $strategyFactory = new DetectionStrategyFactory(freshTestContainer());
     $cursor = new Cursor($strategyFactory);
 
     expect($cursor->getPhpPath())->toBe('php')
@@ -93,7 +93,7 @@ test('Agents maintain relative paths when forceAbsolutePath is false and config 
 
 test('Junie paths remain absolute regardless of forceAbsolutePath parameter', function (): void {
     Configure::delete('Ignis.executable_paths.php');
-    $strategyFactory = Mockery::mock(DetectionStrategyFactory::class);
+    $strategyFactory = new DetectionStrategyFactory(freshTestContainer());
     $junie = new Junie($strategyFactory);
 
     expect($junie->getPhpPath(true))->toBe(PHP_BINARY)
@@ -107,7 +107,7 @@ test('Junie paths remain absolute regardless of forceAbsolutePath parameter', fu
 
 test('Junie uses config when configured', function (): void {
     Configure::write('Ignis.executable_paths.php', '/custom/php');
-    $strategyFactory = Mockery::mock(DetectionStrategyFactory::class);
+    $strategyFactory = new DetectionStrategyFactory(freshTestContainer());
     $junie = new Junie($strategyFactory);
 
     expect($junie->getPhpPath(true))->toBe('/custom/php');
@@ -118,7 +118,7 @@ test('Junie uses config when configured', function (): void {
 
 test('Pi uses AGENTS.md and .pi/skills defaults', function (): void {
     Configure::delete('Ignis.executable_paths.php');
-    $strategyFactory = Mockery::mock(DetectionStrategyFactory::class);
+    $strategyFactory = new DetectionStrategyFactory(freshTestContainer());
     $pi = new Pi($strategyFactory);
 
     expect($pi->getPhpPath())->toBe('php')

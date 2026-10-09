@@ -62,7 +62,12 @@ class OpenCode extends Agent implements SupportsGuidelines, SupportsMcp, Support
     public function projectDetectionConfig(): array
     {
         return [
-            'files' => ['opencode.json', 'opencode.jsonc'],
+            'files' => [
+                'opencode.json',
+                'opencode.jsonc',
+                '.opencode/opencode.json',
+                '.opencode/opencode.jsonc',
+            ],
         ];
     }
 
@@ -90,9 +95,13 @@ class OpenCode extends Agent implements SupportsGuidelines, SupportsMcp, Support
             return $configured;
         }
 
-        return is_file($this->rootPath('opencode.jsonc'))
-            ? 'opencode.jsonc'
-            : 'opencode.json';
+        foreach (['.opencode/opencode.jsonc', 'opencode.jsonc', '.opencode/opencode.json', 'opencode.json'] as $candidate) {
+            if (is_file($this->rootPath($candidate))) {
+                return $candidate;
+            }
+        }
+
+        return '.opencode/opencode.jsonc';
     }
 
     /**

@@ -3,6 +3,11 @@ declare(strict_types=1);
 
 namespace Crustum\Ignis\Mcp\Tools\DatabaseSchema;
 
+use Cake\Collection\Collection;
+use Cake\Database\Connection;
+use Cake\Datasource\ConnectionManager;
+use Throwable;
+
 /**
  * Empty schema driver for unsupported database vendors.
  */
@@ -63,6 +68,21 @@ class NullSchemaDriver extends DatabaseSchemaDriver
      */
     public function getTables(): array
     {
-        return [];
+        try {
+            $connection = ConnectionManager::get($this->connection);
+
+            if (!$connection instanceof Connection) {
+                return [];
+            }
+
+            /** @var array<int, array<string, mixed>> $tables */
+            $tables = (new Collection($connection->getSchemaCollection()->listTables()))
+                ->map(fn(string $table): array => ['name' => $table])
+                ->toList();
+
+            return $tables;
+        } catch (Throwable) {
+            return [];
+        }
     }
 }

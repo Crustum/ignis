@@ -94,7 +94,13 @@ class ClaudeCode extends Agent implements SupportsGuidelines, SupportsMcp, Suppo
      */
     public function guidelinesPath(): string
     {
-        return $this->ignisConfig('agents.claude_code.guidelines_path', 'CLAUDE.md');
+        $configured = $this->ignisConfig('agents.claude_code.guidelines_path');
+
+        if (is_string($configured) && $configured !== '') {
+            return $configured;
+        }
+
+        return is_file($this->rootPath('CLAUDE.md')) ? 'CLAUDE.md' : 'AGENTS.md';
     }
 
     /**

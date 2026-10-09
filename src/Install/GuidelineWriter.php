@@ -5,6 +5,7 @@ namespace Crustum\Ignis\Install;
 
 use Crustum\Ignis\Contracts\SupportsGuidelines;
 use Crustum\Ignis\Support\Filesystem;
+use Crustum\Ignis\Support\ProjectRoot;
 use RuntimeException;
 
 /**
@@ -42,7 +43,7 @@ class GuidelineWriter
         }
 
         $guidelines = $this->agent->transformGuidelines($guidelines);
-        $filePath = $this->agent->guidelinesPath();
+        $filePath = $this->resolveGuidelinesPath($this->agent->guidelinesPath());
         $directory = dirname($filePath);
 
         if (!Filesystem::ensureDirectory($directory)) {
@@ -77,8 +78,6 @@ class GuidelineWriter
                 $separatingNewlines = $existingContent === '' ? '' : "\n\n===\n\n";
                 $newContent = $frontMatter . $existingContent . $separatingNewlines . $replacement;
             }
-
-            $newContent = preg_replace("/\n{3,}/", "\n\n", (string)$newContent);
 
             if (!str_ends_with((string)$newContent, "\n")) {
                 $newContent .= "\n";
@@ -128,5 +127,20 @@ class GuidelineWriter
             usleep($delay + $jitter);
             $delay *= 2;
         }
+    }
+
+    /**
+     * Resolve a guidelines file path against the active install root.
+     *
+     * @param string $path Absolute or project-relative guidelines path
+     * @return string
+     */
+    protected function resolveGuidelinesPath(string $path): string
+    {
+        if (InstallPath::isAbsolutePath($path)) {
+            return $path;
+        }
+
+        return ProjectRoot::path() . DS . ltrim(str_replace(['/', '\\'], DS, $path), DS);
     }
 }

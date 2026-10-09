@@ -6,10 +6,9 @@ namespace Tests\Unit\Install\Agents;
 
 use Crustum\Ignis\Install\Agents\Cursor;
 use Crustum\Ignis\Install\Detection\DetectionStrategyFactory;
-use Mockery;
 
 beforeEach(function (): void {
-    $this->strategyFactory = Mockery::mock(DetectionStrategyFactory::class);
+    $this->strategyFactory = new DetectionStrategyFactory(freshTestContainer());
 });
 
 test('httpMcpServerConfig returns npx mcp-remote config', function (): void {

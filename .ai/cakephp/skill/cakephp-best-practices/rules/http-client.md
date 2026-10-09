@@ -64,8 +64,22 @@ $response = $http->get('/v1/users');
 $http = Client::createFromUrl('https://api.example.com/v1/test');
 ```
 
-## Handle Response Status Explicitly
+## Retry Only Safe Operations
 
+Retry transient connection failures, rate-limit responses, and server errors with a delay — and remember retries multiply the total elapsed time against the calling request or job timeout. Retry idempotent `GET` requests freely. Retry a state-changing request only when the remote API supports an idempotency key or equivalent duplicate protection: send a stable key with every attempt so a redelivered charge cannot bill twice.
+
+```php
+$response = $http->post(
+    'https://api.example.com/v1/charges',
+    json_encode($data),
+    [
+        'type' => 'json',
+        'headers' => ['Idempotency-Key' => $paymentAttempt->uuid],
+    ],
+);
+```
+
+## Handle Response Status Explicitly
 Read the body only after you understand the status. Use response helpers from the book (`isOk()`, `isSuccess()`, `isRedirect()`, etc.) instead of assuming JSON is always a success payload.
 
 Incorrect:

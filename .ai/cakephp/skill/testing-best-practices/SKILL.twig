@@ -1,0 +1,57 @@
+{% set pest = assist.hasPackage('pestphp/pest') %}
+{% set phpunitVersion = assist.packageVersion('phpunit/phpunit') %}
+{% if phpunitVersion %}
+{% set phpunitDocs = 'the PHPUnit ' ~ phpunitVersion ~ ' documentation at `https://phpunit.de/documentation.html`' %}
+{% else %}
+{% set phpunitDocs = 'the PHPUnit documentation at `https://phpunit.de/documentation.html`' %}
+{% endif %}
+# Testing Best Practices
+
+This skill provides rules for designing CakePHP tests. Each rule file explains what to do and why. Tests live under `tests/TestCase/[Type]` as `*Test.php`, run with `vendor/bin/phpunit <path>` (or `bin/cake test`), read fixture rows from the `test` datasource in `config/app_local.php`, and drive HTTP through `IntegrationTestTrait`.{% if not pest %} For PHPUnit API details beyond this skill, fetch {{ phpunitDocs }}.{% endif %}
+
+This project uses {{ pest ? 'Pest' : 'PHPUnit' }}. Follow the corresponding guidance in each rule.
+
+## Consistency First
+
+Read nearby tests before you choose syntax and organization.
+
+A pattern repeated throughout the project is a convention, and project conventions take precedence over this skill. Follow them and give new tests the same structure.
+
+These rules govern the tests you write now. An existing test that follows a project convention is not defective merely because it conflicts with this skill. Do not delete or rewrite it. If the convention has drawbacks, explain them and let the user decide.
+
+## What to Test
+
+Read this section before you write a test.
+
+- Test observable behavior and application contracts. A test must pass after an implementation change if the behavior stays the same.
+- Cover every changed decision and each applicable high-value failure mode. A decision is a branch, a validation, a calculation, or an authorization check.
+- Exercise declarations through behavior instead of repeating their text.
+- Leave framework behavior to framework tests. Testing project configuration is not testing the framework. A constrained association, table scope, or validation rule belongs to this project.
+- Keep every test that can detect a distinct defect. When two tests detect the same defect, trim the higher-layer test to one case and report the duplication. Do not delete an existing test.
+- Write a feature test first using `IntegrationTestTrait` (`get()`/`post()`, `assertResponseOk()`). Write a unit test only for logic that does not use the framework.
+- Write a feature test for every behavior reachable through a request. This project installs no real-browser runner, so do not require browser tests. Mention one only if the user asks for it.
+- Use the test tools that the project installs. Add a new test dependency or plugin only after the user asks for it.
+
+## How to Apply
+
+1. Read the code under test. Read the tests in the same directory. Identify every decision in the code.
+2. Select every applicable branch in the rule index. Read every selected rule file.
+3. Report each defect in the code before you write a test. Examples are a controller action with no validation, an authorization check that no action calls, and a write action with no validation. Test the actual behavior. Report the defect to the user.
+4. Write the tests. Run the smallest set of tests that covers the change (`vendor/bin/phpunit <path>` or `bin/cake test <path>`). The tests must pass.
+5. Check every applicable item in `rules/review.md` and every selected rule file. Resolve every mismatch before completion.
+
+## Rule Index
+
+Most changes need more than one rule file.
+
+| Subject | Rule File |
+| --- | --- |
+| Test framework features that may already do the work | [`rules/finding-features.twig`](rules/finding-features.twig) |
+| File layout, test names, and groups | [`rules/naming.twig`](rules/naming.twig) |
+| Arrange-act-assert and choosing the correct assertion | [`rules/assertions.twig`](rules/assertions.twig) |
+| Endpoint coverage, authentication, authorization, validation | [`rules/endpoint-tests.twig`](rules/endpoint-tests.twig) |
+| Fixtures, test data ownership, and repeated input values | [`rules/test-data.twig`](rules/test-data.twig) |
+| Mocks, outbound HTTP, time, randomness, and databases | [`rules/isolation.twig`](rules/isolation.twig) |
+| Escaping, injection, cross-record access, and privilege checks | [`rules/security.twig`](rules/security.twig) |
+| Environment and CI settings for a slow suite | [`rules/performance.twig`](rules/performance.twig) |
+| Reviewing a test or suite | [`rules/review.twig`](rules/review.twig) |

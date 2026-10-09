@@ -71,22 +71,37 @@ class BrowserLogger
         table: console.table
     };
 
-    function safeStringify(obj) {
-        const seen = new WeakSet();
-        return JSON.stringify(obj, (key, value) => {
-            if (typeof value === 'object' && value !== null) {
-                if (seen.has(value)) return '[Circular]';
-                seen.add(value);
-            }
-            if (value instanceof Error) {
-                return {
-                    name: value.name,
-                    message: value.message,
-                    stack: value.stack
-                };
-            }
+    function toSafeValue(value, seen) {
+        if (value === null || typeof value !== 'object') {
             return value;
-        });
+        }
+        if (value instanceof Error) {
+            return { name: value.name, message: value.message, stack: value.stack };
+        }
+        if (value instanceof Date) {
+            return value.toISOString();
+        }
+        if (seen.has(value)) {
+            return '[Circular]';
+        }
+        seen.add(value);
+        if (Array.isArray(value)) {
+            return value.map((item) => toSafeValue(item, seen));
+        }
+        const plain = {};
+        for (const key of Object.keys(value)) {
+            if (key === 'toJSON') continue;
+            try {
+                plain[key] = toSafeValue(value[key], seen);
+            } catch (e) {
+                plain[key] = '[Unreadable]';
+            }
+        }
+        return plain;
+    }
+
+    function safeStringify(obj) {
+        return JSON.stringify(toSafeValue(obj, new WeakSet()));
     }
 
     function normalizeType(type) {
@@ -222,11 +237,7 @@ class BrowserLogger
                 timestamp: new Date().toISOString(),
                 data: [{
                     message: 'Unhandled Promise Rejection',
-                    reason: event.reason instanceof Error ? {
-                        name: event.reason.name,
-                        message: event.reason.message,
-                        stack: event.reason.stack
-                    } : event.reason
+                    reason: toSafeValue(event.reason, new WeakSet())
                 }],
                 url: window.location.href,
                 userAgent: navigator.userAgent
@@ -257,17 +268,17 @@ HTML;
      */
     private static function captureTypes(mixed $levels): array
     {
-        if (!is_array($levels) || $levels === []) {
+        $levels = is_array($levels)
+            ? array_filter($levels, fn(mixed $level): bool => is_string($level) && trim($level) !== '')
+            : [];
+
+        if ($levels === []) {
             return self::ALL_BROWSER_LOG_TYPES;
         }
 
         $captureTypes = [];
 
         foreach ($levels as $level) {
-            if (!is_string($level)) {
-                continue;
-            }
-
             $level = strtolower(trim($level));
             $level = $level === 'warn' ? 'warning' : $level;
 

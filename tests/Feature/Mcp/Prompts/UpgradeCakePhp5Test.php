@@ -6,6 +6,7 @@ use Crustum\Ignis\Mcp\Prompts\UpgradeCakePhp5\UpgradeCakePhp5;
 use Crustum\Ignis\Support\PackageRegistry;
 use Crustum\Inspector\Ecosystems\Ecosystem;
 use Crustum\Inspector\ProjectManager;
+use JMac\Testing\Double;
 
 beforeEach(function (): void {
     $this->prompt = new UpgradeCakePhp5();
@@ -47,23 +48,23 @@ test('it properly compiles twig assist helpers', function (): void {
 });
 
 test('it registers only for cakephp 4.x projects', function (): void {
-    $project = Mockery::mock(ProjectManager::class);
-    $php = Mockery::mock(Ecosystem::class);
-    $project->shouldReceive('php')->andReturn($php);
-    $php->shouldReceive('uses')
+    $project = Double::for(ProjectManager::class, override: true);
+    $php = Double::for(Ecosystem::class);
+    $project->allows('php')->returns($php);
+    $php->allows('uses')
         ->with(PackageRegistry::CAKEPHP, '>=4.0.0 <5.0.0')
-        ->andReturn(true);
+        ->returns(true);
 
-    expect($this->prompt->shouldRegister($project))->toBeTrue();
+    expect($this->prompt->shouldRegister($project->instance()))->toBeTrue();
 });
 
 test('it does not register for cakephp 5.x projects', function (): void {
-    $project = Mockery::mock(ProjectManager::class);
-    $php = Mockery::mock(Ecosystem::class);
-    $project->shouldReceive('php')->andReturn($php);
-    $php->shouldReceive('uses')
+    $project = Double::for(ProjectManager::class, override: true);
+    $php = Double::for(Ecosystem::class);
+    $project->allows('php')->returns($php);
+    $php->allows('uses')
         ->with(PackageRegistry::CAKEPHP, '>=4.0.0 <5.0.0')
-        ->andReturn(false);
+        ->returns(false);
 
-    expect($this->prompt->shouldRegister($project))->toBeFalse();
+    expect($this->prompt->shouldRegister($project->instance()))->toBeFalse();
 });

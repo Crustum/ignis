@@ -18,6 +18,7 @@ use Crustum\Ignis\Support\PackageRegistry;
 use Crustum\Ignis\Support\ProjectRoot;
 use Crustum\Inspector\PackageCollection;
 use Crustum\Inspector\ProjectManager;
+use JMac\Testing\Double;
 
 beforeEach(function (): void {
     useTestApp();
@@ -28,7 +29,7 @@ beforeEach(function (): void {
     Configure::write('Ignis.rules.scoped_guidelines', true);
     Configure::write('Ignis.agents.claude_code.guidelines_path', base_path('CLAUDE.md'));
 
-    $this->project = Mockery::mock(ProjectManager::class);
+    $this->project = Double::for(ProjectManager::class, override: true);
     mockProjectPackages($this->project, new PackageCollection([
         inspectorPackage(PackageRegistry::CAKEPHP, '5.0.0'),
         inspectorPackage(PackageRegistry::PEST, '3.0.0'),
@@ -50,7 +51,6 @@ afterEach(function (): void {
     Configure::delete('Ignis.rules.scoped_guidelines');
     Configure::delete('Ignis.agents.claude_code.guidelines_path');
     resetTestApp();
-    Mockery::close();
 });
 
 /**
@@ -70,7 +70,7 @@ function makeRulesEndToEndInstallCommand(
     registerTestAgents($container);
     $detector = new AgentsDetector($container, new IgnisManager());
     $guidelineComposer = new GuidelineComposer($project);
-    $skillComposer = Mockery::mock(SkillComposer::class);
+    $skillComposer = Double::for(SkillComposer::class);
     $ruleRepository ??= new RuleRepository(ProjectRoot::path() . DS . '.ai' . DS . 'rules');
 
     return new class($detector, $config, $guidelineComposer, $skillComposer, $ruleRepository, $project) extends InstallCommand {
@@ -129,7 +129,7 @@ function runRulesEndToEndInstall(InstallCommand $command): ?int
 it('extracts path-scoped rules into .ai/rules/ignis when running ignis install with rules enabled', function (): void {
     Configure::write('Ignis.rules.enabled', true);
 
-    $command = makeRulesEndToEndInstallCommand($this->config, $this->project);
+    $command = makeRulesEndToEndInstallCommand($this->config, $this->project->instance());
     expect(runRulesEndToEndInstall($command))->toBe(0);
 
     $managedDir = base_path('.ai/rules/ignis');
@@ -162,13 +162,13 @@ it('extracts path-scoped rules into .ai/rules/ignis when running ignis install w
 it('re-inlines everything and removes the managed directory when rules are disabled', function (): void {
     Configure::write('Ignis.rules.enabled', true);
 
-    $command = makeRulesEndToEndInstallCommand($this->config, $this->project);
+    $command = makeRulesEndToEndInstallCommand($this->config, $this->project->instance());
     expect(runRulesEndToEndInstall($command))->toBe(0);
     expect(is_dir(base_path('.ai/rules/ignis')))->toBeTrue();
 
     Configure::write('Ignis.rules.enabled', false);
 
-    $command = makeRulesEndToEndInstallCommand($this->config, $this->project);
+    $command = makeRulesEndToEndInstallCommand($this->config, $this->project->instance());
     expect(runRulesEndToEndInstall($command))->toBe(0);
 
     expect(is_dir(base_path('.ai/rules/ignis')))->toBeFalse();
@@ -183,11 +183,11 @@ it('re-inlines everything and removes the managed directory when rules are disab
 it('falls back to inlining scoped content with a warning when rule syncing fails', function (): void {
     Configure::write('Ignis.rules.enabled', true);
 
-    $ruleRepository = Mockery::mock(RuleRepository::class);
-    $ruleRepository->shouldReceive('syncManaged')->andThrow(new RuntimeException('disk full'));
-    $ruleRepository->shouldReceive('clearManaged')->andReturn(false);
+    $ruleRepository = Double::for(RuleRepository::class);
+    $ruleRepository->allows('syncManaged')->throws(new RuntimeException('disk full'));
+    $ruleRepository->allows('clearManaged')->returns(false);
 
-    $command = makeRulesEndToEndInstallCommand($this->config, $this->project, $ruleRepository);
+    $command = makeRulesEndToEndInstallCommand($this->config, $this->project->instance(), $ruleRepository);
     expect(runRulesEndToEndInstall($command))->toBe(0);
 
     expect(is_dir(base_path('.ai/rules/ignis')))->toBeFalse();
@@ -202,11 +202,11 @@ it('falls back to inlining scoped content with a warning when rule syncing fails
 it('aborts instead of re-inlining when both rule syncing and cleanup fail', function (): void {
     Configure::write('Ignis.rules.enabled', true);
 
-    $ruleRepository = Mockery::mock(RuleRepository::class);
-    $ruleRepository->shouldReceive('syncManaged')->andThrow(new RuntimeException('disk full'));
-    $ruleRepository->shouldReceive('clearManaged')->andThrow(new RuntimeException('locked directory'));
+    $ruleRepository = Double::for(RuleRepository::class);
+    $ruleRepository->allows('syncManaged')->throws(new RuntimeException('disk full'));
+    $ruleRepository->allows('clearManaged')->throws(new RuntimeException('locked directory'));
 
-    $command = makeRulesEndToEndInstallCommand($this->config, $this->project, $ruleRepository);
+    $command = makeRulesEndToEndInstallCommand($this->config, $this->project->instance(), $ruleRepository);
 
     expect(fn(): ?int => runRulesEndToEndInstall($command))
         ->toThrow(RuntimeException::class, 'could not clear .ai/rules/ignis');

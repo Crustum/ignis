@@ -30,18 +30,18 @@ class IgnisManager
      */
     private array $agents = [
         'amp' => Amp::class,
-        'junie' => Junie::class,
-        'cursor' => Cursor::class,
+        'antigravity' => Antigravity::class,
         'claude_code' => ClaudeCode::class,
         'codex' => Codex::class,
         'copilot' => Copilot::class,
+        'cursor' => Cursor::class,
         'factory' => Factory::class,
+        'grok_build' => GrokBuild::class,
+        'junie' => Junie::class,
         'kiro' => Kiro::class,
         'opencode' => OpenCode::class,
-        'antigravity' => Antigravity::class,
-        'zed' => Zed::class,
         'pi' => Pi::class,
-        'grok_build' => GrokBuild::class,
+        'zed' => Zed::class,
     ];
 
     /**
@@ -67,6 +67,9 @@ class IgnisManager
      */
     public function getAgents(): array
     {
-        return $this->agents;
+        $agents = $this->agents;
+        ksort($agents);
+
+        return $agents;
     }
 }

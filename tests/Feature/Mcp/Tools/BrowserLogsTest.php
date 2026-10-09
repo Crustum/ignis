@@ -48,7 +48,52 @@ it('returns error when a log file does not exist', function (): void {
 
     expect($response)->isToolResult()
         ->toolHasError()
-        ->toolTextContains('No log file found, probably means no logs yet.');
+        ->toolTextContains('No log file found at');
+});
+
+it('reads from a configured browser channel path', function (): void {
+    $customPath = configureFeatureLogChannel('browser', 'frontend');
+    createFeatureLogFile($customPath, '2024-01-15 10:00:00 error: Custom channel error {"url":"http://example.com"}');
+
+    $tool = new BrowserLogs();
+    $response = $tool->handle(new Request(['entries' => 1]));
+
+    expect($response)->isToolResult()
+        ->toolHasNoError()
+        ->toolTextContains('Custom channel error');
+});
+
+it('reports the resolved path when the browser channel does not write to a file', function (): void {
+    Log::setConfig('browser', ['className' => \Cake\Log\Engine\ConsoleLog::class]);
+
+    $tool = new BrowserLogs();
+    $response = $tool->handle(new Request(['entries' => 1]));
+
+    expect($response)->isToolResult()
+        ->toolHasError()
+        ->toolTextContains('does not write to a file');
+});
+
+it('does not serve a truncated entry when the chunk boundary lands inside a stack trace', function (): void {
+    $trace = implode("\n", array_map(
+        fn(int $index): string => "#{$index} /app/src/Handler.php(42): padding trace frame for the boundary",
+        range(1, 1400),
+    ));
+
+    createBrowserLogFile(implode("\n", [
+        '2024-01-15 09:00:00 error: Big exception',
+        $trace,
+        '2024-01-15 10:00:00 info: First small entry',
+        '2024-01-15 10:01:00 info: Second small entry',
+        '2024-01-15 10:02:00 info: Third small entry',
+    ]));
+
+    $tool = new BrowserLogs();
+    $response = $tool->handle(new Request(['entries' => 4]));
+
+    expect($response)->isToolResult()
+        ->toolHasNoError()
+        ->toolTextContains('Big exception', 'Third small entry');
 });
 
 it('returns message when log file is empty', function (): void {

@@ -109,7 +109,6 @@ class SkillPackDiscovery
             }
         }
 
-        // @phpstan-ignore return.type
         return new Collection($entries);
     }
 
@@ -164,7 +163,6 @@ class SkillPackDiscovery
             }
         }
 
-        // @phpstan-ignore return.type
         return new Collection($entries);
     }
 

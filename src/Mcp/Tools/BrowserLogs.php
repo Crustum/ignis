@@ -56,10 +56,13 @@ class BrowserLogs extends Tool
             return Response::error('The "entries" argument must be greater than 0.');
         }
 
-        $logFile = (defined('LOGS') ? LOGS : sys_get_temp_dir() . DS . 'logs' . DS) . 'browser.log';
+        $logFile = $this->resolveLogFilePathForChannel(
+            'browser',
+            (defined('LOGS') ? LOGS : sys_get_temp_dir() . DS . 'logs' . DS) . 'browser.log',
+        );
 
         if (!is_file($logFile)) {
-            return Response::error('No log file found, probably means no logs yet.');
+            return Response::error('No log file found at ' . $logFile . '. This probably means no logs yet, or the `browser` log channel does not write to a file.');
         }
 
         $logs = trim(implode("\n\n", $this->readLastLogEntries($logFile, $entries)));

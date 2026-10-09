@@ -89,9 +89,13 @@ class UsersController extends AppController
 
 Or subscribe the mailer to `Model.afterSave` via `implementedEvents()` so controllers stay free of mail setup (see Mailer book “Creating Reusable Emails”).
 
+## Queue Slow Mail, Keep Urgent Mail Synchronous
+
+Queue mail that calls out to delivery services when it does not need to complete before the response: add `Cake\Queue\Mailer\QueueTrait` to the mailer and `push()` the action, or route the profile through `QueueTransport` (see the `queue-development` skill). Keep mail synchronous when the caller must know immediately whether delivery was accepted, or when no queue worker is available.
+
 ## Keep Content and Delivery Tests Separate
 
 - Render/content: exercise templates or Mailer methods that build messages.
-- Delivery: assert transports/fakes using the project’s existing Cake test helpers.
+- Delivery: assert queued mail on the queue (`QueueTrait` asserts) and synchronous mail on delivery, so failures identify the affected behavior — never mix the two in one test.
 
-See the Testing book and this skill’s `testing.md` for PHPUnit patterns.
+See the `testing-best-practices` skill for PHPUnit patterns.

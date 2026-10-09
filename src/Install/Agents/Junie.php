@@ -94,7 +94,7 @@ class Junie extends Agent implements SupportsGuidelines, SupportsMcp, SupportsSk
      */
     public function mcpConfigPath(): string
     {
-        return $this->ignisConfig('agents.junie.mcp_path', '.junie/mcp/mcp.json');
+        return $this->ignisConfig('agents.junie.mcp_config_path', '.junie/mcp/mcp.json');
     }
 
     /**

@@ -7,6 +7,7 @@ use Cake\Collection\Collection;
 use Cake\Core\Configure;
 use Crustum\Ignis\Install\AgentsDetector;
 use Crustum\Ignis\Support\Config;
+use JMac\Testing\Double;
 
 beforeEach(function (): void {
     flushIgnisConfig();
@@ -23,10 +24,10 @@ it('does not throw when no agents are saved and none are auto-detected in non-in
 
     $container = freshTestContainer();
     registerTestAgents($container);
-    $detector = Mockery::mock(AgentsDetector::class);
-    $detector->shouldReceive('getAgents')->andReturn(new Collection([]));
-    $detector->shouldReceive('discoverSystemInstalledAgents')->andReturn([]);
-    $detector->shouldReceive('discoverProjectInstalledAgents')->andReturn([]);
+    $detector = Double::for(AgentsDetector::class);
+    $detector->allows('getAgents')->returns(new Collection([]));
+    $detector->allows('discoverSystemInstalledAgents')->returns([]);
+    $detector->allows('discoverProjectInstalledAgents')->returns([]);
 
     $command = makeTestInstallCommand($config, $detector);
 

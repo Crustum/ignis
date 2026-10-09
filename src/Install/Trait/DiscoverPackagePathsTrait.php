@@ -5,8 +5,6 @@ namespace Crustum\Ignis\Install\Trait;
 
 use Cake\Collection\Collection;
 use Cake\Collection\CollectionInterface;
-use Crustum\Ignis\Support\Composer;
-use Crustum\Ignis\Support\Npm;
 use Crustum\Ignis\Support\PackageRegistry;
 use Crustum\Inspector\Package;
 use Crustum\Inspector\ProjectManager;
@@ -164,18 +162,10 @@ trait DiscoverPackagePathsTrait
      */
     protected function resolveFirstPartyIgnisPath(Package $package, string $subpath): ?string
     {
-        if (!Composer::isFirstPartyPackage($package->name()) && !Npm::isFirstPartyPackage($package->name())) {
+        if (!PackageRegistry::isFirstParty($package)) {
             return null;
         }
 
-        $packagePath = $package->path();
-
-        if ($packagePath === null) {
-            return null;
-        }
-
-        $path = implode(DIRECTORY_SEPARATOR, [$packagePath, 'resources', 'ignis', $subpath]);
-
-        return is_dir($path) ? $path : null;
+        return PackageRegistry::ignisPath($package, $subpath);
     }
 }

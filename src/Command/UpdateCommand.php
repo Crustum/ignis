@@ -13,6 +13,7 @@ use Crustum\Ignis\Install\ThirdPartyPackage;
 use Crustum\Ignis\Support\Config;
 use Crustum\Ignis\Support\ProjectRoot;
 use Crustum\Ignis\Trait\ConsolePromptTrait;
+use Crustum\Ignis\Trait\ReportsSkillParseFailuresTrait;
 use Crustum\Inspector\ProjectManager;
 use Override;
 
@@ -22,6 +23,7 @@ use Override;
 class UpdateCommand extends Command
 {
     use ConsolePromptTrait;
+    use ReportsSkillParseFailuresTrait;
 
     /**
      * Constructor.
@@ -47,14 +49,12 @@ class UpdateCommand extends Command
      */
     public function execute(Arguments $args, ConsoleIo $io): ?int
     {
-        if (!$this->config->isValid() || $this->config->getAgents() === []) {
+        $this->skillParseFailures()->flush();
+
+        if (!$this->config->isValid()) {
             $io->error('Please set up Ignis with [php bin/cake.php ignis install] first.');
 
             return static::CODE_ERROR;
-        }
-
-        if ($args->getBooleanOption('no-discover') !== true) {
-            $this->discoverNewContent($args, $io);
         }
 
         $guidelines = $this->config->getGuidelines();
@@ -64,6 +64,16 @@ class UpdateCommand extends Command
 
         if (!$guidelines && !$hasSkills) {
             return static::CODE_SUCCESS;
+        }
+
+        if ($this->config->getAgents() === []) {
+            $io->error('Please set up Ignis with [php bin/cake.php ignis install] first.');
+
+            return static::CODE_ERROR;
+        }
+
+        if ($args->getBooleanOption('no-discover') !== true) {
+            $this->discoverNewContent($args, $io);
         }
 
         $installArgs = ['--no-interaction'];
@@ -76,7 +86,18 @@ class UpdateCommand extends Command
             $installArgs[] = '--skills';
         }
 
+        $pathOption = $args->getOption('path');
+
+        if (is_string($pathOption) && $pathOption !== '') {
+            $installArgs[] = '--path=' . $pathOption;
+        }
+
+        if ($args->getBooleanOption('force') === true) {
+            $installArgs[] = '--force';
+        }
+
         $this->executeCommand(InstallCommand::class, $installArgs, $io);
+        $this->reportSkillParseFailures($io);
         $io->success('Ignis guidelines and skills updated successfully.');
 
         return static::CODE_SUCCESS;
@@ -97,7 +118,7 @@ class UpdateCommand extends Command
             return;
         }
 
-        if (!$this->isInteractive($args, $io)) {
+        if (!$this->isInteractive($args, $io) || $this->runningAsComposerScript()) {
             return;
         }
 
@@ -133,6 +154,17 @@ class UpdateCommand extends Command
     }
 
     /**
+     * Composer sets COMPOSER_DEV_MODE for the entire install/update run, including
+     * post-update-cmd scripts, so prompting there would block an unattended `composer update`.
+     *
+     * @return bool
+     */
+    protected function runningAsComposerScript(): bool
+    {
+        return getenv('COMPOSER_DEV_MODE') !== false;
+    }
+
+    /**
      * Build the option parser.
      *
      * @param \Cake\Console\ConsoleOptionParser $parser Option parser
@@ -155,6 +187,14 @@ class UpdateCommand extends Command
             ])
             ->addOption('ignore-skills', [
                 'help' => 'Skip updating the skills directory',
+                'boolean' => true,
+            ])
+            ->addOption('path', [
+                'help' => 'Forward to ignis install: write assets into this directory',
+                'short' => 'p',
+            ])
+            ->addOption('force', [
+                'help' => 'Forward to ignis install: allow --path when .ai already exists',
                 'boolean' => true,
             ]);
 

@@ -8,6 +8,8 @@ use Crustum\Inspector\Ecosystems\JsEcosystem;
 use Crustum\Inspector\Package;
 use Crustum\Inspector\PackageCollection;
 use Crustum\Inspector\ProjectManager;
+use JMac\Testing\Double;
+use JMac\Testing\OverriddenDouble;
 
 /**
  * Build a mocked ProjectManager for ApplicationInfo tests.
@@ -18,18 +20,18 @@ use Crustum\Inspector\ProjectManager;
  */
 function mockApplicationInfoProject(array $phpPackages = [], array $jsPackages = []): ProjectManager
 {
-    $project = Mockery::mock(ProjectManager::class);
-    $php = Mockery::mock(Ecosystem::class);
-    $js = Mockery::mock(JsEcosystem::class);
+    $project = Double::for(ProjectManager::class, override: true);
+    $php = Double::for(Ecosystem::class);
+    $js = Double::for(JsEcosystem::class);
 
     $phpCollection = new PackageCollection($phpPackages);
     $jsCollection = new PackageCollection($jsPackages);
 
-    $project->shouldReceive('php')->andReturn($php);
-    $project->shouldReceive('js')->andReturn($js);
-    $php->shouldReceive('packages')->andReturn($phpCollection);
-    $js->shouldReceive('packages')->andReturn($jsCollection);
-    $php->shouldReceive('package')->andReturnUsing(
+    $project->allows('php')->returns($php);
+    $project->allows('js')->returns($js);
+    $php->allows('packages')->returns($phpCollection);
+    $js->allows('packages')->returns($jsCollection);
+    $php->allows('package')->resolves(
         function (string $name) use ($phpPackages): ?Package {
             foreach ($phpPackages as $package) {
                 if ($package->name() === $name) {
@@ -41,7 +43,7 @@ function mockApplicationInfoProject(array $phpPackages = [], array $jsPackages =
         },
     );
 
-    return $project;
+    return $project->instance();
 }
 
 /**
@@ -76,15 +78,50 @@ function inspectorPackage(string $name, string $version, bool $dev = false, ?str
 }
 
 /**
+ * Stage a inspector package directory with Ignis asset subpaths for tests.
+ *
+ * Discovery reads the package path directly, so staged packages live outside
+ * vendor/ and node_modules/.
+ *
+ * @param string $name Composer or npm package name
+ * @param string ...$ignisSubpaths Ignis resource subpaths (e.g. guidelines, skills)
+ * @return string Staged package path
+ */
+function stageInspectorPackage(string $name, string ...$ignisSubpaths): string
+{
+    $path = testAppTmpPath('inspector-packages' . DIRECTORY_SEPARATOR . str_replace(['@', '/'], ['', '-'], $name));
+
+    ensureDirectoryExists($path);
+
+    foreach ($ignisSubpaths as $subpath) {
+        ensureDirectoryExists(
+            $path . DIRECTORY_SEPARATOR . 'resources' . DIRECTORY_SEPARATOR . 'ignis' . DIRECTORY_SEPARATOR . $subpath,
+        );
+    }
+
+    return $path;
+}
+
+/**
+ * Remove all staged inspector packages.
+ *
+ * @return void
+ */
+function clearInspectorPackages(): void
+{
+    deleteDirectory(testAppTmpPath('inspector-packages'));
+}
+
+/**
  * Wire ProjectManager php/js ecosystems from a flat package collection.
  *
- * @param \Crustum\Inspector\ProjectManager $project Mocked project manager
+ * @param \JMac\Testing\OverriddenDouble $project Project double to wire
  * @param \Crustum\Inspector\PackageCollection $packages Packages to expose
  * @param \Crustum\Inspector\Enums\JsPackageManager|null $packageManager Optional JS package manager
  * @return void
  */
 function mockProjectPackages(
-    ProjectManager $project,
+    OverriddenDouble $project,
     PackageCollection $packages,
     ?JsPackageManager $packageManager = null,
 ): void {
@@ -99,6 +136,6 @@ function mockProjectPackages(
         }
     }
 
-    $project->shouldReceive('php')->andReturn(new Ecosystem(new PackageCollection($php)));
-    $project->shouldReceive('js')->andReturn(new JsEcosystem(new PackageCollection($js), $packageManager));
+    $project->allows('php')->returns(new Ecosystem(new PackageCollection($php)));
+    $project->allows('js')->returns(new JsEcosystem(new PackageCollection($js), $packageManager));
 }

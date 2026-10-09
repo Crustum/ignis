@@ -3,8 +3,13 @@ declare(strict_types=1);
 
 namespace Crustum\Ignis\Trait;
 
+use Cake\Core\Configure;
 use Crustum\Ignis\Install\GuidelineAssist;
+use Crustum\Ignis\Support\Fences;
 use Crustum\Ignis\Support\GuidelineTwig;
+use Crustum\Ignis\Support\RenderFailures;
+use Psr\Container\ContainerInterface;
+use Throwable;
 use Twig\Environment;
 
 /**
@@ -38,17 +43,50 @@ trait RendersTwigGuidelinesTrait
             '<?php' => '___OPEN_PHP_TAG___',
         ];
 
+        $content = preg_replace_callback(
+            '/(?<fence>`{3,}|~{3,}).*?\k<fence>/s',
+            static fn(array $matches): string => str_replace('&', '___AMPERSAND___', $matches[0]),
+            $content,
+        ) ?? $content;
+
         $content = str_replace(array_keys($placeholders), array_values($placeholders), $content);
 
         $twig = $this->createGuidelineTwigEnvironment($path);
-        $rendered = $twig->createTemplate($content)->render([
-            'assist' => $this->getGuidelineAssist(),
-            ...$data,
-        ]);
+
+        try {
+            $rendered = $twig->createTemplate($content)->render([
+                'assist' => $this->getGuidelineAssist(),
+                ...$data,
+            ]);
+        } catch (Throwable) {
+            $this->renderFailures()->record($path);
+
+            return '';
+        }
 
         $rendered = html_entity_decode((string)$rendered, ENT_QUOTES | ENT_HTML5);
+        $rendered = str_replace('___AMPERSAND___', '&', $rendered);
 
         return str_replace(array_values($placeholders), array_keys($placeholders), $rendered);
+    }
+
+    /**
+     * Return the shared render-failures recorder.
+     *
+     * Resolves from the application container when registered, falling back
+     * to a fresh instance so trait consumers outside DI still work.
+     *
+     * @return \Crustum\Ignis\Support\RenderFailures
+     */
+    protected function renderFailures(): RenderFailures
+    {
+        $container = Configure::read('app.container');
+
+        if ($container instanceof ContainerInterface && $container->has(RenderFailures::class)) {
+            return $container->get(RenderFailures::class);
+        }
+
+        return new RenderFailures();
     }
 
     /**
@@ -84,36 +122,15 @@ trait RendersTwigGuidelinesTrait
      */
     protected function markScopedBlocks(string $content): string
     {
-        $fences = [];
+        return Fences::outside($content, function (string $markdown): string {
+            $marked = preg_replace_callback(
+                '/(?<!@)@scoped\(\s*(?P<paths>\[(?:[\s,]|\'[^\']*\'|"[^"]*")*\])\s*\)/s',
+                fn(array $matches): string => '___SCOPED_START_' . base64_encode((string)json_encode($this->parseScopedPaths($matches['paths']))) . '___',
+                $markdown,
+            ) ?? $markdown;
 
-        $marked = preg_replace_callback('/(?<fence>`{3,}|~{3,}).*?\k<fence>/s', function (array $matches) use (&$fences): string {
-            $placeholder = '___SCOPED_FENCE_' . count($fences) . '___';
-            $fences[$placeholder] = $matches[0];
-
-            return $placeholder;
-        }, $content);
-
-        if ($marked === null) {
-            return $content;
-        }
-
-        $marked = preg_replace_callback(
-            '/(?<!@)@scoped\(\s*(?P<paths>\[(?:[\s,]|\'[^\']*\'|"[^"]*")*\])\s*\)/s',
-            fn(array $matches): string => '___SCOPED_START_' . base64_encode((string)json_encode($this->parseScopedPaths($matches['paths']))) . '___',
-            $marked,
-        );
-
-        if ($marked === null) {
-            return $content;
-        }
-
-        $marked = preg_replace('/(?<!@)@endscoped/', '___SCOPED_END___', $marked);
-
-        if ($marked === null) {
-            return $content;
-        }
-
-        return str_replace(array_keys($fences), array_values($fences), $marked);
+            return preg_replace('/(?<!@)@endscoped/', '___SCOPED_END___', $marked) ?? $marked;
+        });
     }
 
     /**

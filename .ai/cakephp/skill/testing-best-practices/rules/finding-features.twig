@@ -1,0 +1,47 @@
+{% set pest = assist.hasPackage('pestphp/pest') %}
+# How to Find Test Framework Features
+
+CakePHP TestSuite already implements most testing needs. Reach for a built-in before implementing the behavior by hand.
+
+## Request and Response
+
+- Dispatch with `get()` / `post()` / `put()` / `patch()` / `delete()` / `options()` / `head()` from `IntegrationTestTrait`; request bodies go in the second parameter (except `get()` / `delete()`).
+- Assert status class with `assertResponseOk()` / `assertResponseSuccess()` / `assertResponseError()` / `assertResponseFailure()` / `assertResponseCode(200)`; redirects with `assertRedirect()` / `assertRedirectBack()` / `assertNoRedirect()` / `assertRedirectContains()`; bodies with `assertResponseContains()` / `assertResponseNotContains()` / `assertResponseEquals()`.
+- Assert the rendered view with `assertTemplate('index')` / `assertLayout('default')` / `$this->viewVariable('user')`; compare large rendered output against a stored file with `StringCompareTrait`.
+- Set request state with `session()` / `cookie()` / `configRequest()`; tokens with `enableCsrfToken()` / `enableSecurityToken()`; unlocked fields with `setUnlockedFields()`; flashes with `enableRetainFlashMessages()` + `assertFlashMessage()` / `assertSession(..., 'Flash.flash.0.message')`.
+
+## Data and Doubles
+
+- Declare rows with `$fixtures` / `getFixtures()` (plugin: `'plugin.DebugKit.Articles'`, core: `'core.Comments'`, subdirectories: `'app.Blog/Articles'`, or FQCN); author rows in `tests/Fixture/* extends TestFixture` with `$records`, `strictFields = true`, or dynamic `init()`; wrap each test in a rolled-back transaction with `TransactionStrategy` (global default via `TestSuite.fixtureStrategy`).
+- Mock a table method with `getMockForModel('EmailVerification', ['send'])` (clear in `tearDown()` with `$this->getTableLocator()->clear()`, or `mockModel()` for Mockery); replace a container service with `$this->mockService(StripeService::class, ...)` (`$this->removeMockService(...)` to undo).
+- Mock outbound HTTP with `HttpClientTrait`: `mockClientGet()` / `mockClientPost()` / `mockClientPut()` / `mockClientPatch()` / `mockClientDelete()` plus `newClientResponse($code, $headers, $body)`. Fake the exact endpoint each test uses.
+- Assert dispatched events with `assertEventFired()` / `assertEventFiredWith()` after enabling tracking (`$table->getEventManager()->setEventList(new EventList())`); the global manager is the default.
+
+## Selection and Repetition
+
+| Work that you need | Feature to use |
+| --- | --- |
+| Run one test method with many input values | data provider, `#[DataProvider]`, `#[TestWith]` |
+| Run one test only after another test passes | `#[Depends]` |
+| Select or skip a set of tests in one run | `#[Group]`, `--group`, `--exclude-group` |
+| Skip a test on a version or on a missing extension | `#[RequiresPhp]`, `#[RequiresPhpExtension]` |
+| Find a test that depends on the order of the run | `--order-by=random` |
+| Stop the run at the first failure while you debug | `--stop-on-failure`, `--filter testName <path>` |
+
+{% if pest %}
+In files that already use Pest, use its own features instead: datasets for many input values, `describe()` for lifecycle grouping, higher-order expectations for collections, and `arch()` for directory-wide conventions.
+{% endif %}
+
+## Hand-Built Checks Are the Last Resort
+
+A hand-built check fails with `false is not true`, which identifies nothing. A framework assertion names the incorrect response, value, or record, so the failure indicates what to fix:
+
+```php
+// The failure says that false is not true. Instead of this...
+$this->assertTrue($articles->find()->where(['slug' => $slug])->all()->isNotEmpty());
+
+// Use this... the failure names what did not render...
+$this->get('/articles/' . $slug);
+$this->assertResponseOk();
+$this->assertResponseContains($title);
+```

@@ -4,19 +4,17 @@ declare(strict_types=1);
 
 use Crustum\Ignis\Contracts\SupportsMcp;
 use Crustum\Ignis\Install\McpWriter;
+use JMac\Testing\Double;
 
 it('installs ignis mcp successfully', function (): void {
-    $agent = Mockery::mock(SupportsMcp::class);
-    $agent->shouldReceive('getPhpPath')
-        ->once()
-        ->andReturn('php');
-    $agent->shouldReceive('getCakePath')
-        ->once()
-        ->andReturn('bin/cake.php');
-    $agent->shouldReceive('installMcp')
+    $agent = Double::for(SupportsMcp::class);
+    $agent->expects('getPhpPath')
+        ->returns('php');
+    $agent->expects('getCakePath')
+        ->returns('bin/cake.php');
+    $agent->expects('installMcp')
         ->with('cake-ignis', 'php', ['bin/cake.php', 'ignis', 'mcp'])
-        ->once()
-        ->andReturn(true);
+        ->returns(true);
 
     $writer = new McpWriter($agent);
     $result = $writer->write();
@@ -25,15 +23,14 @@ it('installs ignis mcp successfully', function (): void {
 });
 
 it('throws exception when ignis mcp installation returns false', function (): void {
-    $agent = Mockery::mock(SupportsMcp::class);
-    $agent->shouldReceive('getPhpPath')
-        ->andReturn('php');
-    $agent->shouldReceive('getCakePath')
-        ->andReturn('bin/cake.php');
-    $agent->shouldReceive('installMcp')
+    $agent = Double::for(SupportsMcp::class);
+    $agent->allows('getPhpPath')
+        ->returns('php');
+    $agent->allows('getCakePath')
+        ->returns('bin/cake.php');
+    $agent->expects('installMcp')
         ->with('cake-ignis', 'php', ['bin/cake.php', 'ignis', 'mcp'])
-        ->once()
-        ->andReturn(false);
+        ->returns(false);
 
     $writer = new McpWriter($agent);
 
@@ -42,15 +39,14 @@ it('throws exception when ignis mcp installation returns false', function (): vo
 });
 
 it('throws exception when ignis mcp installation throws exception', function (): void {
-    $agent = Mockery::mock(SupportsMcp::class);
-    $agent->shouldReceive('getPhpPath')
-        ->andReturn('php');
-    $agent->shouldReceive('getCakePath')
-        ->andReturn('bin/cake.php');
-    $agent->shouldReceive('installMcp')
+    $agent = Double::for(SupportsMcp::class);
+    $agent->allows('getPhpPath')
+        ->returns('php');
+    $agent->allows('getCakePath')
+        ->returns('bin/cake.php');
+    $agent->expects('installMcp')
         ->with('cake-ignis', 'php', ['bin/cake.php', 'ignis', 'mcp'])
-        ->once()
-        ->andThrow(new RuntimeException('Permission denied'));
+        ->throws(new RuntimeException('Permission denied'));
 
     $writer = new McpWriter($agent);
 

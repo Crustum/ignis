@@ -39,7 +39,17 @@ trait ReadsLogsTrait
      */
     protected function getEntrySplitRegex(): string
     {
-        return '/(?=(?:' . $this->getTimestampRegex() . '|' . $this->getCakeTimestampRegex() . '))/';
+        return '/(?=' . $this->getEntryStartPattern() . ')/';
+    }
+
+    /**
+     * Return the alternation matching the start of a log entry.
+     *
+     * @return string
+     */
+    protected function getEntryStartPattern(): string
+    {
+        return '(?:' . $this->getTimestampRegex() . '|' . $this->getCakeTimestampRegex() . ')';
     }
 
     /**
@@ -76,14 +86,15 @@ trait ReadsLogsTrait
      * Resolve a configured CakePHP log channel to its file path.
      *
      * @param string $channel Log channel name
+     * @param string|null $default Fallback path when the channel does not write to a file
      * @return string
      */
-    protected function resolveLogFilePathForChannel(string $channel): string
+    protected function resolveLogFilePathForChannel(string $channel, ?string $default = null): string
     {
         $config = Log::getConfig($channel);
 
         if (!is_array($config) || !$this->isFileLogConfig($config)) {
-            return $this->defaultLogFilePathForChannel($channel);
+            return $default ?? $this->defaultLogFilePathForChannel($channel);
         }
 
         return $this->resolveFileLogPath($config, $channel);
@@ -349,6 +360,10 @@ trait ReadsLogsTrait
 
             if (!is_array($entries)) {
                 return [];
+            }
+
+            if ($offset > 0 && isset($entries[0]) && preg_match('/^' . $this->getEntryStartPattern() . '/', $entries[0]) !== 1) {
+                array_shift($entries);
             }
 
             return $entries;
