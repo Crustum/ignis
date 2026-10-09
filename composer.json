@@ -21,7 +21,7 @@
         "cakephp/cakephp": "^5.3",
         "crustum/mcp": "^1.0",
         "crustum/inspector": "^1.0",
-        "crustum/cakephp-skills": "dev-main",
+        "crustum/cakephp-skills": "^0.1",
         "crustum/plugin-manifest": "^1.1",
         "crustum/prompts": "^1.0|^2.0",
         "laravel/prompts": "^0.3.21",
