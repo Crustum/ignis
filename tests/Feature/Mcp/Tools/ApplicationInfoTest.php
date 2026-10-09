@@ -93,6 +93,7 @@ it('returns updated package versions when a new inspector instance is used', fun
 });
 
 it('reports the driver name when the default connection has a custom name', function (): void {
+    configureFeatureSchemaConnection();
     Configure::write('Datasources.default', 'tenant');
 
     $response = (new ApplicationInfo(mockApplicationInfoProject()))->handle(new Request([]));
@@ -105,6 +106,7 @@ it('reports the driver name when the default connection has a custom name', func
 });
 
 it('does not expose datasource credentials in application info', function (): void {
+    configureFeatureSchemaConnection();
     $secretPassword = 'ignis-secret-db-password-' . uniqid();
 
     ConnectionManager::setConfig('leaky', [
@@ -115,6 +117,11 @@ it('does not expose datasource credentials in application info', function (): vo
         'password' => $secretPassword,
         'url' => 'sqlite://secret-user:' . $secretPassword . '@/:memory:',
     ]);
+    if (array_key_exists('default', ConnectionManager::aliases())) {
+        ConnectionManager::dropAlias('default');
+    }
+    
+    ConnectionManager::alias('leaky', 'default');
     Configure::write('Datasources.default', 'leaky');
 
     $response = (new ApplicationInfo(mockApplicationInfoProject()))->handle(new Request([]));
@@ -129,6 +136,10 @@ it('does not expose datasource credentials in application info', function (): vo
             ->and($encoded)->not->toContain('password');
     });
 
+    if (array_key_exists('default', ConnectionManager::aliases())) {
+        ConnectionManager::dropAlias('default');
+    }
+    
     ConnectionManager::drop('leaky');
     Configure::delete('Datasources.default');
 });

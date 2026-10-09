@@ -50,7 +50,11 @@ class GuidelineWriter
             throw new RuntimeException("Failed to create directory: {$directory}");
         }
 
-        $handle = fopen($filePath, 'c+');
+        if (is_dir($filePath)) {
+            throw new RuntimeException("Failed to open file: {$filePath}");
+        }
+
+        $handle = $this->openFile($filePath);
 
         if ($handle === false) {
             throw new RuntimeException("Failed to open file: {$filePath}");
@@ -126,6 +130,23 @@ class GuidelineWriter
             $jitter = random_int(0, (int)($delay * 0.1));
             usleep($delay + $jitter);
             $delay *= 2;
+        }
+    }
+
+    /**
+     * Open a guidelines file while converting warnings into a false result.
+     *
+     * @param string $filePath Absolute file path
+     * @return resource|false
+     */
+    protected function openFile(string $filePath): mixed
+    {
+        set_error_handler(static fn(): bool => true);
+
+        try {
+            return fopen($filePath, 'c+');
+        } finally {
+            restore_error_handler();
         }
     }
 

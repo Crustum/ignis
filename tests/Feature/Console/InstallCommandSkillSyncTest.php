@@ -186,6 +186,11 @@ it('does not track a skill that failed to sync', function (): void {
 
 it('reports a stale skill that could not be removed', function (): void {
     $stale = $this->tempRoot . DIRECTORY_SEPARATOR . '.claude' . DIRECTORY_SEPARATOR . 'skills' . DIRECTORY_SEPARATOR . 'stale-skill';
+
+    if (!posixPermissionsEffective($this->tempRoot)) {
+        $this->markTestSkipped('Skipped: POSIX file permissions are not effective on this filesystem.');
+    }
+
     mkdir($stale, 0777, true);
     file_put_contents($stale . DIRECTORY_SEPARATOR . 'SKILL.md', 'stale content');
     chmod($stale . DIRECTORY_SEPARATOR . 'SKILL.md', 0444);

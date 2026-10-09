@@ -406,3 +406,44 @@ function deleteDirectory(string $path): void
 
     Filesystem::removeTree($path);
 }
+
+/**
+ * Check whether POSIX file permissions are effective in a directory.
+ *
+ * Windows filesystems (including WSL mounts under /mnt/) ignore
+ * chmod executable bits and permission modes, so permission-based
+ * tests cannot run there. Also returns false for root, which can
+ * unlink read-only files regardless of modes.
+ *
+ * @param string $directory Directory to probe
+ * @return bool True when chmod modes and executable bits take effect
+ */
+function posixPermissionsEffective(string $directory): bool
+{
+    if (function_exists('posix_geteuid') && posix_geteuid() === 0) {
+        return false;
+    }
+
+    if (!is_dir($directory) && !mkdir($directory, 0777, true)) {
+        return false;
+    }
+
+    $probe = $directory . DIRECTORY_SEPARATOR . '.ignis-posix-probe-' . uniqid();
+
+    if (file_put_contents($probe, 'probe') === false) {
+        return false;
+    }
+
+    try {
+        chmod($probe, 0644);
+        clearstatcache(true, $probe);
+
+        if (is_executable($probe)) {
+            return false;
+        }
+
+        return ((fileperms($probe) & 0777) === 0644);
+    } finally {
+        unlink($probe);
+    }
+}

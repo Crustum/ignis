@@ -218,7 +218,7 @@ test('it throws exception when file cannot be opened', function (): void {
 
     expect(fn (): int => $writer->write('test guidelines'))
         ->toThrow(RuntimeException::class, "Failed to open file: {$dirPath}");
-})->skipOnWindows();
+});
 
 test('it preserves file content structure with proper spacing', function (): void {
     $tempFile = tempnam(sys_get_temp_dir(), 'ignis_test_');

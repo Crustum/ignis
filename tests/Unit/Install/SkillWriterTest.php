@@ -1276,6 +1276,10 @@ it('preserves executable scripts without making other skill files executable', f
     $previousUmask = umask($mask);
 
     try {
+        if (!posixPermissionsEffective($source)) {
+            $this->markTestSkipped('Skipped: POSIX file permissions are not effective on this filesystem.');
+        }
+
         expect($writer->write($skill))->toBe(SkillWriter::SUCCESS)
             ->and(is_executable($absoluteTarget . '/executable-skill/scripts/check.sh'))->toBeTrue()
             ->and(is_executable($absoluteTarget . '/executable-skill/scripts/data.json'))->toBeFalse()

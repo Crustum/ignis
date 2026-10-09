@@ -13,7 +13,6 @@ use Crustum\Ignis\Install\Detection\DetectionStrategyFactory;
 use Crustum\Ignis\Install\Enums\McpInstallationStrategy;
 use Crustum\Ignis\Install\Enums\Platform;
 use JMac\Testing\Double;
-use JMac\Testing\Matching\Argument;
 
 beforeEach(function (): void {
     $this->strategyFactory = Double::for(DetectionStrategyFactory::class);
@@ -134,27 +133,53 @@ test('detectInProject merges config with basePath and delegates to strategy', fu
 });
 
 test('installMcp uses Shell strategy when configured', function (): void {
-    $environment = Double::for(TestAgent::class)->passthru(new TestAgent($this->strategyFactory, McpInstallationStrategy::SHELL));
+    $environment = new class ($this->strategyFactory) extends TestAgent {
+        /** @var array<int, array{string, string, array<int, string>, array<string, string>}> */
+        public array $calls = [];
 
-    $environment->expects('installShellMcp')
-        ->with('test-key', 'test-command', ['arg1'], ['ENV' => 'value'])
-        ->returns(true);
+        public function __construct(DetectionStrategyFactory $factory)
+        {
+            parent::__construct($factory, McpInstallationStrategy::SHELL);
+        }
+
+        protected function installShellMcp(string $key, string $command, array $args = [], array $env = []): bool
+        {
+            $this->calls[] = [$key, $command, $args, $env];
+
+            return true;
+        }
+    };
 
     $result = $environment->installMcp('test-key', 'test-command', ['arg1'], ['ENV' => 'value']);
 
-    expect($result)->toBe(true);
+    expect($result)->toBe(true)
+        ->and($environment->calls)->toHaveCount(1)
+        ->and($environment->calls[0])->toBe(['test-key', 'test-command', ['arg1'], ['ENV' => 'value']]);
 });
 
 test('installMcp uses File strategy when configured', function (): void {
-    $environment = Double::for(TestAgent::class)->passthru(new TestAgent($this->strategyFactory));
+    $environment = new class ($this->strategyFactory) extends TestAgent {
+        /** @var array<int, array{string, string, array<int, string>, array<string, string>}> */
+        public array $calls = [];
 
-    $environment->expects('installFileMcp')
-        ->with('test-key', 'test-command', ['arg1'], ['ENV' => 'value'])
-        ->returns(true);
+        public function __construct(DetectionStrategyFactory $factory)
+        {
+            parent::__construct($factory, McpInstallationStrategy::FILE);
+        }
+
+        protected function installFileMcp(string $key, string $command, array $args = [], array $env = []): bool
+        {
+            $this->calls[] = [$key, $command, $args, $env];
+
+            return true;
+        }
+    };
 
     $result = $environment->installMcp('test-key', 'test-command', ['arg1'], ['ENV' => 'value']);
 
-    expect($result)->toBe(true);
+    expect($result)->toBe(true)
+        ->and($environment->calls)->toHaveCount(1)
+        ->and($environment->calls[0])->toBe(['test-key', 'test-command', ['arg1'], ['ENV' => 'value']]);
 });
 
 test('installMcp returns false for None strategy', function (): void {
@@ -174,24 +199,42 @@ test('installShellMcp returns false when shellMcpCommand is null', function (): 
 });
 
 test('installShellMcp executes command with placeholders replaced', function (): void {
-    $environment = Double::for(TestAgent::class)->passthru(new TestAgent($this->strategyFactory, McpInstallationStrategy::SHELL, 'install {key} {command} {args} {env}'));
+    $environment = new class ($this->strategyFactory) extends TestAgent {
+        public string $lastCommand = '';
 
-    $environment->expects('runShellCommand')
-        ->with(Argument::satisfies(fn (string $command): bool => str_contains($command, 'install test-key test-command "arg1" "arg2"')
-            && str_contains($command, '-e ENV1="value1"')
-            && str_contains($command, '-e ENV2="value2"')))
-        ->returns(['success' => true, 'errorOutput' => '']);
+        public function __construct(DetectionStrategyFactory $factory)
+        {
+            parent::__construct($factory, McpInstallationStrategy::SHELL, 'install {key} {command} {args} {env}');
+        }
+
+        protected function runShellCommand(string $command): array
+        {
+            $this->lastCommand = $command;
+
+            return ['success' => true, 'errorOutput' => ''];
+        }
+    };
 
     $result = $environment->installMcp('test-key', 'test-command', ['arg1', 'arg2'], ['env1' => 'value1', 'env2' => 'value2']);
 
-    expect($result)->toBe(true);
+    expect($result)->toBe(true)
+        ->and($environment->lastCommand)->toContain('install test-key test-command "arg1" "arg2"')
+        ->and($environment->lastCommand)->toContain('-e ENV1="value1"')
+        ->and($environment->lastCommand)->toContain('-e ENV2="value2"');
 });
 
 test('installShellMcp returns true when process fails but has already exists error', function (): void {
-    $environment = Double::for(TestAgent::class)->passthru(new TestAgent($this->strategyFactory, McpInstallationStrategy::SHELL, 'install {key}'));
+    $environment = new class ($this->strategyFactory) extends TestAgent {
+        public function __construct(DetectionStrategyFactory $factory)
+        {
+            parent::__construct($factory, McpInstallationStrategy::SHELL, 'install {key}');
+        }
 
-    $environment->expects('runShellCommand')
-        ->returns(['success' => false, 'errorOutput' => 'Error: already exists']);
+        protected function runShellCommand(string $command): array
+        {
+            return ['success' => false, 'errorOutput' => 'Error: already exists'];
+        }
+    };
 
     $result = $environment->installMcp('test-key', 'test-command');
 
@@ -363,31 +406,53 @@ test('preserves single commands without arguments', function (): void {
 });
 
 test('shell installation handles valet php commands', function (): void {
-    $environment = Double::for(TestAgent::class)->passthru(new TestAgent($this->strategyFactory, McpInstallationStrategy::SHELL, 'install {key} {command} {args}'));
+    $environment = new class ($this->strategyFactory) extends TestAgent {
+        public string $lastCommand = '';
 
-    $environment->expects('runShellCommand')
-        ->with(Argument::satisfies(fn (string $command): bool => str_contains($command, 'install test-key valet')
-            && str_contains($command, '"php"')
-            && str_contains($command, '"bin/cake.php"')))
-        ->returns(['success' => true, 'errorOutput' => '']);
+        public function __construct(DetectionStrategyFactory $factory)
+        {
+            parent::__construct($factory, McpInstallationStrategy::SHELL, 'install {key} {command} {args}');
+        }
+
+        protected function runShellCommand(string $command): array
+        {
+            $this->lastCommand = $command;
+
+            return ['success' => true, 'errorOutput' => ''];
+        }
+    };
 
     $result = $environment->installMcp('test-key', 'valet php', ['bin/cake.php', 'ignis', 'mcp']);
 
-    expect($result)->toBe(true);
+    expect($result)->toBe(true)
+        ->and($environment->lastCommand)->toContain('install test-key valet')
+        ->and($environment->lastCommand)->toContain('"php"')
+        ->and($environment->lastCommand)->toContain('"bin/cake.php"');
 });
 
 test('shell installation handles herd php commands', function (): void {
-    $environment = Double::for(TestAgent::class)->passthru(new TestAgent($this->strategyFactory, McpInstallationStrategy::SHELL, 'install {key} {command} {args}'));
+    $environment = new class ($this->strategyFactory) extends TestAgent {
+        public string $lastCommand = '';
 
-    $environment->expects('runShellCommand')
-        ->with(Argument::satisfies(fn (string $command): bool => str_contains($command, 'install test-key herd')
-            && str_contains($command, '"php"')
-            && str_contains($command, '"bin/cake.php"')))
-        ->returns(['success' => true, 'errorOutput' => '']);
+        public function __construct(DetectionStrategyFactory $factory)
+        {
+            parent::__construct($factory, McpInstallationStrategy::SHELL, 'install {key} {command} {args}');
+        }
+
+        protected function runShellCommand(string $command): array
+        {
+            $this->lastCommand = $command;
+
+            return ['success' => true, 'errorOutput' => ''];
+        }
+    };
 
     $result = $environment->installMcp('test-key', 'herd php', ['bin/cake.php', 'ignis', 'mcp']);
 
-    expect($result)->toBe(true);
+    expect($result)->toBe(true)
+        ->and($environment->lastCommand)->toContain('install test-key herd')
+        ->and($environment->lastCommand)->toContain('"php"')
+        ->and($environment->lastCommand)->toContain('"bin/cake.php"');
 });
 
 test('file installation handles valet php commands', function (): void {

@@ -75,6 +75,7 @@ it('reflects updated inspector data on subsequent tool calls', function (): void
 });
 
 it('reads the configured default datasource name', function (): void {
+    configureFeatureSchemaConnection();
     Configure::write('Datasources.default', 'test');
 
     $response = (new ApplicationInfoTool(mockApplicationInfoProject()))->handle(new Request([]));

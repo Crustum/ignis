@@ -70,7 +70,7 @@ jobs:
       run: |
         export CODECOVERAGE=1
         export db_dsn='mysql://ignis@127.0.0.1:3306/ignis_test?encoding=utf8mb4&timezone=UTC&cacheMetadata=true&quoteIdentifiers=true&persistent=false'
-        vendor/bin/pest --coverage --coverage-clover=coverage.xml
+        vendor/bin/pest --compact --coverage --coverage-clover=coverage.xml
 
     - name: Run Pest prefer-lowest (sequential, no paratest)
       if: matrix.dependencies == 'lowest'
@@ -78,14 +78,14 @@ jobs:
       run: |
         export IGNIS_PREFER_LOWEST=1
         export db_dsn='mysql://ignis@127.0.0.1:3306/ignis_test?encoding=utf8mb4&timezone=UTC&cacheMetadata=true&quoteIdentifiers=true&persistent=false'
-        vendor/bin/pest
+        vendor/bin/pest --compact
 
     - name: Run Pest without coverage
       if: matrix.dependencies != 'lowest' && (matrix.php-version != '8.2' || matrix.os != 'ubuntu-latest' || matrix.dependencies != 'highest')
       shell: bash
       run: |
         export db_dsn='mysql://ignis@127.0.0.1:3306/ignis_test?encoding=utf8mb4&timezone=UTC&cacheMetadata=true&quoteIdentifiers=true&persistent=false'
-        vendor/bin/pest
+        vendor/bin/pest --compact
 
     - name: Submit code coverage
       if: matrix.php-version == '8.2' && matrix.os == 'ubuntu-latest' && matrix.dependencies == 'highest'
